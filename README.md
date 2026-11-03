@@ -43,7 +43,7 @@ br.com.fametro.spring.transportadora
 Pré-requisitos: JDK 25 e Docker.
 
 ```bash
-cp .env.example .env        # preencha os segredos (o .env NÃO vai para o git)
+# antes: crie o .env na raiz com as variáveis da tabela abaixo (o .env NÃO vai para o git)
 ./mvnw spring-boot:run      # perfil dev (padrão): sobe o Postgres do compose.yaml e a API
 ./mvnw test                 # testes com Postgres em container (não precisa do .env)
 ```

@@ -31,7 +31,7 @@ public class VariaveisAmbienteObrigatorias implements ApplicationListener<Applic
         throw new IllegalStateException("""
 
                 Variáveis obrigatórias não definidas (perfil %s): %s
-                  - dev : preencha o .env na raiz do projeto (cp .env.example .env)
+                  - dev : preencha o .env na raiz do projeto (variáveis listadas no README)
                   - prod: defina como variáveis de ambiente do servidor
                 """.formatted(Arrays.toString(perfis), String.join(", ", faltando)));
     }
