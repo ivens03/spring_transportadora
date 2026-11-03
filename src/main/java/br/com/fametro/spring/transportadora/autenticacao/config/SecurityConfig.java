@@ -24,7 +24,7 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
 /**
  * Matriz de acesso (ver docs/fluxo-acesso.mmd):
  * <pre>
- * /api/auth/**                 público (login app, login painel, ativação) — /api/auth/me exige token
+ * /api/auth/**                 público (login, ativação, troca de PIN/senha) — /api/auth/me exige token
  * /api/app/**                  credencial APP_ENTREGADOR + perfil ENTREGADOR
  * /api/painel/gestao/**        credencial PAINEL_WEB + ADMINISTRATIVO
  * /api/painel/operacao/**      credencial PAINEL_WEB + SUPORTE
@@ -44,7 +44,9 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable()) // API stateless com Bearer token, sem cookie de sessão
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/app/login", "/api/auth/painel/login", "/api/auth/ativar").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/app/login", "/api/auth/painel/login", "/api/auth/ativar",
+                                "/api/auth/app/trocar-pin", "/api/auth/painel/trocar-senha").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/app/**").access(exige(TipoCredencial.APP_ENTREGADOR, Perfil.ENTREGADOR))
                         .requestMatchers("/api/painel/gestao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.ADMINISTRATIVO))

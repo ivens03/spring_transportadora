@@ -6,6 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -33,6 +34,17 @@ public abstract class IntegracaoTestBase {
 
     @Autowired
     protected MockMvc mvc;
+
+    @Autowired
+    protected JdbcTemplate jdbc;
+
+    /** Simula que passaram 31 dias desde o cadastro da chave de salt ativa do usuário. */
+    protected void vencerChaveSalt(String matricula) {
+        jdbc.update("""
+                update seguranca.chave_salt
+                   set cadastrada_em = now() - interval '31 days', expira_em = now() - interval '1 day'
+                 where ativa and usuario_id = (select id from usuario where matricula = ?)""", matricula);
+    }
 
     protected record Criado(String matricula, String codigo) {
     }

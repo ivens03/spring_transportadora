@@ -3,6 +3,8 @@ package br.com.fametro.spring.transportadora.autenticacao.controller;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.AtivacaoRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.LoginAppRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.LoginPainelRequest;
+import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaPinRequest;
+import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaSenhaRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.response.SessaoResponse;
 import br.com.fametro.spring.transportadora.autenticacao.dto.response.TokenResponse;
 import br.com.fametro.spring.transportadora.autenticacao.service.AutenticacaoService;
@@ -17,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Login de cada tipo de credencial, ativação e sessão atual. Rotas públicas, exceto /me. */
+/** Login de cada tipo de credencial, ativação, troca de PIN/senha e sessão atual. Rotas públicas, exceto /me. */
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -35,6 +37,18 @@ public class AutenticacaoController {
     @PostMapping("/painel/login")
     public ResponseEntity<TokenResponse> loginPainel(@Valid @RequestBody LoginPainelRequest request) {
         return ResponseEntity.ok(autenticacaoService.loginPainel(request));
+    }
+
+    /** Troca do PIN (obrigatória após 30 dias). Já devolve o token novo. */
+    @PostMapping("/app/trocar-pin")
+    public ResponseEntity<TokenResponse> trocarPin(@Valid @RequestBody TrocaPinRequest request) {
+        return ResponseEntity.ok(autenticacaoService.trocarPin(request));
+    }
+
+    /** Troca da senha do painel (obrigatória após 30 dias). Já devolve o token novo. */
+    @PostMapping("/painel/trocar-senha")
+    public ResponseEntity<TokenResponse> trocarSenha(@Valid @RequestBody TrocaSenhaRequest request) {
+        return ResponseEntity.ok(autenticacaoService.trocarSenha(request));
     }
 
     @PostMapping("/ativar")

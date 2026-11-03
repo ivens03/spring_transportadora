@@ -4,6 +4,7 @@ import br.com.fametro.spring.transportadora.config.RotaCertaProperties;
 import br.com.fametro.spring.transportadora.exception.custom.ConflitoException;
 import br.com.fametro.spring.transportadora.exception.custom.RecursoNaoEncontradoException;
 import br.com.fametro.spring.transportadora.exception.custom.RegraNegocioException;
+import br.com.fametro.spring.transportadora.seguranca.service.CredencialService;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.response.CodigoAtivacaoResponse;
 import br.com.fametro.spring.transportadora.usuario.dto.response.UsuarioResponse;
@@ -28,6 +29,7 @@ public class UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CredencialService credencialService;
     private final RotaCertaProperties props;
     private final Clock clock;
 
@@ -71,6 +73,7 @@ public class UsuarioService {
         String codigo = CodigoAtivacao.gerar();
         Instant expiraEm = agora.plus(props.credencial().validadeCodigoAtivacao());
         usuario.reemitirCodigoAtivacao(passwordEncoder.encode(codigo), expiraEm, agora);
+        credencialService.revogar(usuario.getId()); // a chave de salt da senha/PIN antigo deixa de valer
         return CodigoAtivacaoResponse.de(usuario, codigo, expiraEm);
     }
 
@@ -90,9 +93,10 @@ public class UsuarioService {
             return null;
         }
         PoliticaCredencial.validar(Perfil.ADMINISTRATIVO.getTipoCredencial(), senha);
-        Usuario admin = Usuario.administradorInicial(gerarMatricula(Perfil.ADMINISTRATIVO), nome,
-                Usuario.normalizarEmail(email), passwordEncoder.encode(senha), clock.instant());
-        usuarioRepository.save(admin);
+        Instant agora = clock.instant();
+        Usuario admin = usuarioRepository.save(Usuario.administradorInicial(
+                gerarMatricula(Perfil.ADMINISTRATIVO), nome, Usuario.normalizarEmail(email), agora));
+        admin.ativar(credencialService.gerar(admin.getId(), senha).hash(), agora);
         return admin.getMatricula();
     }
 

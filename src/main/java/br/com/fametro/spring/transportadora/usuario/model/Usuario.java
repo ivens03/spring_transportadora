@@ -47,7 +47,10 @@ public class Usuario {
     @Column(nullable = false)
     private StatusUsuario status;
 
-    /** Hash (BCrypt) do PIN do app ou da senha do painel. Nulo até a ativação. */
+    /**
+     * Hash Argon2id do PIN do app ou da senha do painel. Nulo até a ativação.
+     * O salt fica em seguranca.chave_salt e o pepper no .env.
+     */
     private String senhaHash;
 
     private String codigoAtivacaoHash;
@@ -78,11 +81,9 @@ public class Usuario {
         return u;
     }
 
-    /** Primeiro administrativo do sistema: já nasce ativo (senha vem da configuração). */
-    public static Usuario administradorInicial(String matricula, String nome, String email, String senhaHash, Instant agora) {
-        Usuario u = novo(matricula, nome, email, Perfil.ADMINISTRATIVO, null, null, agora);
-        u.ativar(senhaHash, agora);
-        return u;
+    /** Primeiro administrativo do sistema: a senha vem da configuração (.env) e é definida logo após salvar. */
+    public static Usuario administradorInicial(String matricula, String nome, String email, Instant agora) {
+        return novo(matricula, nome, email, Perfil.ADMINISTRATIVO, null, null, agora);
     }
 
     /** Matrícula sempre em maiúsculas e sem espaços (ex.: " ent-000001 " -> "ENT-000001"). */
@@ -114,6 +115,11 @@ public class Usuario {
         this.falhasLogin = 0;
         this.bloqueadoAte = null;
         this.atualizadoEm = agora;
+    }
+
+    /** Troca de senha/PIN (voluntária ou obrigatória após 30 dias). */
+    public void trocarCredencial(String novoSenhaHash, Instant agora) {
+        ativar(novoSenhaHash, agora);
     }
 
     /** Invalida a credencial atual e volta para "aguardando ativação" (esqueceu PIN, troca de aparelho, desbloqueio). */

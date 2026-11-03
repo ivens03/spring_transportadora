@@ -2,6 +2,7 @@ package br.com.fametro.spring.transportadora.exception.handler;
 
 import br.com.fametro.spring.transportadora.exception.custom.ConflitoException;
 import br.com.fametro.spring.transportadora.exception.custom.CredenciaisInvalidasException;
+import br.com.fametro.spring.transportadora.exception.custom.CredencialExpiradaException;
 import br.com.fametro.spring.transportadora.exception.custom.RecursoNaoEncontradoException;
 import br.com.fametro.spring.transportadora.exception.custom.RegraNegocioException;
 import br.com.fametro.spring.transportadora.exception.dto.CampoErroResponse;
@@ -36,6 +37,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(CredenciaisInvalidasException.class)
     public ResponseEntity<ErroResponse> credenciaisInvalidas(CredenciaisInvalidasException ex, HttpServletRequest req) {
         return responder(HttpStatus.UNAUTHORIZED, ex.getMessage(), req);
+    }
+
+    /** Senha/PIN certo, mas vencido (30 dias): 403 com código para o cliente abrir a tela de troca. */
+    @ExceptionHandler(CredencialExpiradaException.class)
+    public ResponseEntity<ErroResponse> credencialExpirada(CredencialExpiradaException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErroResponse.de(HttpStatus.FORBIDDEN,
+                CredencialExpiradaException.CODIGO, ex.getMessage(), req.getRequestURI()));
     }
 
     @ExceptionHandler(RecursoNaoEncontradoException.class)

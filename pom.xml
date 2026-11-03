@@ -28,6 +28,7 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<bouncycastle.version>1.85</bouncycastle.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -58,6 +59,12 @@
 		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<!-- Argon2id (hash de senha/PIN com salt + pepper) -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>${bouncycastle.version}</version>
 		</dependency>
 
 		<dependency>

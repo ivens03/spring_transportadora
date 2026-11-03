@@ -1,12 +1,13 @@
+# Variáveis vêm do .env (o docker compose lê automaticamente o .env desta pasta).
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: rotacerta
-      POSTGRES_USER: rotacerta
-      POSTGRES_PASSWORD: rotacerta
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
       - rotacerta-pg:/var/lib/postgresql/data
 

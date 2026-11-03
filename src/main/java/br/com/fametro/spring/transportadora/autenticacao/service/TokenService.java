@@ -26,7 +26,7 @@ public class TokenService {
     private final RotaCertaProperties props;
     private final Clock clock;
 
-    public TokenResponse emitir(Usuario usuario) {
+    public TokenResponse emitir(Usuario usuario, Instant credencialExpiraEm) {
         TipoCredencial tipo = usuario.tipoCredencial();
         Duration validade = tipo == TipoCredencial.APP_ENTREGADOR
                 ? props.credencial().validadeTokenApp()
@@ -48,6 +48,6 @@ public class TokenService {
         String token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
 
         return new TokenResponse(token, "Bearer", validade.toSeconds(), expiraEm,
-                usuario.getMatricula(), usuario.getPerfil(), tipo);
+                usuario.getMatricula(), usuario.getPerfil(), tipo, credencialExpiraEm);
     }
 }

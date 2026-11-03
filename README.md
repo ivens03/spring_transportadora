@@ -2,7 +2,7 @@
 
 Projeto do MBA (Backend 03). Sistema que rastreia entregas em tempo real para uma transportadora de médio porte.
 
-**Stack:** Java 25 · Spring Boot 4.1 · Spring Security 7 (JWT) · Spring Data JPA · Flyway · PostgreSQL 17 · Testcontainers
+**Stack:** Java 25 · Spring Boot 4.1 · Spring Security 7 (JWT) · Argon2id (Bouncy Castle) · Spring Data JPA · Flyway · PostgreSQL 17 · Testcontainers
 
 ## Arquitetura: por módulo, em camadas dentro de cada um
 
@@ -23,6 +23,10 @@ br.com.fametro.spring.transportadora
 │   ├── dto/request/             LoginAppRequest, LoginPainelRequest, AtivacaoRequest
 │   ├── dto/response/            TokenResponse, SessaoResponse
 │   └── service/                 AutenticacaoService, TokenService
+├── seguranca/                   hash de senha/PIN: Argon2id + salt + pepper (schema seguranca do banco)
+│   ├── model/                   ChaveSalt (seguranca.chave_salt)
+│   ├── repository/              ChaveSaltRepository
+│   └── service/                 CredencialService, Argon2Hasher
 ├── config/                      configurações gerais: AppConfig, RotaCertaProperties
 └── exception/                   tratamento de erro global (vale para todos os módulos)
     ├── custom/                  RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409
@@ -31,7 +35,7 @@ br.com.fametro.spring.transportadora
 ```
 
 - Dentro do módulo: `controller` → `service` → `repository` → `model`; o service devolve DTO de response.
-- Dependência entre módulos em um sentido só: `autenticacao` usa `usuario`; `usuario` não conhece `autenticacao`.
+- Dependência entre módulos em um sentido só: `autenticacao` → `usuario` → `seguranca` (`seguranca` não conhece ninguém; guarda só o `usuarioId`).
 - Próximos módulos (entregas, rastreamento, ...) seguem a mesma estrutura.
 
 ## Como rodar
@@ -39,18 +43,21 @@ br.com.fametro.spring.transportadora
 Pré-requisitos: JDK 25 e Docker.
 
 ```bash
-./mvnw spring-boot:run      # sobe o Postgres do compose.yaml (porta 5433) e a API na porta 8085
-./mvnw test                 # testes de integração com Postgres em container
+cp .env.example .env        # preencha os segredos (o .env NÃO vai para o git)
+./mvnw spring-boot:run      # sobe o Postgres do compose.yaml e a API (portas do .env: 5433 e 8085)
+./mvnw test                 # testes com Postgres em container (não precisa do .env)
 ```
 
-Na primeira subida é criado o **primeiro Administrativo** (senão ninguém conseguiria criar matrículas):
+O `.env` é lido pelo Spring (`spring.config.import=optional:file:.env[.properties]`) e pelo `docker compose`.
+Em servidor, as mesmas chaves podem vir como variáveis de ambiente.
 
-| Variável de ambiente     | Padrão (só desenvolvimento) |
-|--------------------------|-----------------------------|
-| `ROTACERTA_ADMIN_EMAIL`  | `admin@rotacerta.local`     |
-| `ROTACERTA_ADMIN_SENHA`  | `RotaCerta2026`             |
-| `ROTACERTA_JWT_SEGREDO`  | segredo de dev (≥ 32 bytes) |
-| `PORT`                   | `8085`                      |
+| Variável                                  | Para quê |
+|-------------------------------------------|----------|
+| `SERVER_PORT`                             | porta da API |
+| `POSTGRES_HOST/PORT/DB/USER/PASSWORD`     | banco (também usadas pelo `compose.yaml`) |
+| `ROTACERTA_JWT_SEGREDO`                   | assinatura HMAC do JWT (≥ 32 bytes) — `openssl rand -base64 48` |
+| `ROTACERTA_PEPPER`                        | pepper do Argon2id (Base64, ≥ 32 bytes) — `openssl rand -base64 32` |
+| `ROTACERTA_ADMIN_EMAIL` / `ROTACERTA_ADMIN_SENHA` | primeiro ADMINISTRATIVO, criado na subida se não existir nenhum |
 
 ## Acesso: um tipo de credencial por vínculo
 
@@ -73,6 +80,24 @@ Regras:
 - 5 tentativas erradas travam o login por 15 minutos. Mensagem de erro sempre genérica.
 - Código de ativação: 8 caracteres, uso único, vale 72h; no banco fica só o hash (BCrypt).
 
+### Senha/PIN: Argon2id + salt + pepper, com validade de 30 dias
+
+| Peça    | Onde fica | Papel |
+|---------|-----------|-------|
+| **hash**   | `public.usuario.senha_hash` — `$argon2id$v=19$m=19456,t=2,p=1$<hash>` | resultado do Argon2id (parâmetros mínimos da OWASP gravados junto) |
+| **salt**   | `seguranca.chave_salt` — 16 bytes aleatórios por usuário | impede tabelas prontas e hashes iguais para senhas iguais |
+| **pepper** | `.env` (`ROTACERTA_PEPPER`) — nunca no banco | parâmetro *secret* do Argon2: quem roubar só o banco não consegue testar senhas |
+
+Tabela `seguranca.chave_salt`: `salt`, `ativa` (marca a chave em uso; as anteriores ficam como histórico),
+`cadastrada_em` e `expira_em` (= cadastrada + 30 dias). Só pode haver **uma chave ativa por usuário**.
+
+- Toda ativação ou troca de senha/PIN gera uma **chave de salt nova** e desativa a anterior.
+- Passou de `expira_em`: o login devolve **403** com `"codigo": "CREDENCIAL_EXPIRADA"` (só para quem acertou a senha/PIN).
+  O usuário troca em `POST /api/auth/app/trocar-pin` (entregador) ou `POST /api/auth/painel/trocar-senha` (funcionário),
+  que já devolvem o token novo. Vale para PIN e senha.
+- O login devolve `credencialExpiraEm`, para o app/painel avisar antes de vencer.
+- A troca também pode ser voluntária, antes dos 30 dias. A nova credencial precisa ser diferente da atual.
+
 ### Ciclo de vida da matrícula
 
 1. **Administrativo cadastra o usuário** — `POST /api/painel/gestao/usuarios`
@@ -85,6 +110,8 @@ Regras:
 3. **Login**
    - Entregador: `POST /api/auth/app/login` `{ "matricula", "pin" }`
    - Funcionário: `POST /api/auth/painel/login` `{ "email", "senha" }`
+   - **Troca (obrigatória a cada 30 dias)**: `POST /api/auth/app/trocar-pin` `{ "matricula", "pinAtual", "novoPin" }`
+     e `POST /api/auth/painel/trocar-senha` `{ "email", "senhaAtual", "novaSenha" }`
 4. **Quem sou eu** — `GET /api/auth/me` (perfil, módulo e permissões, para o front montar o menu).
 5. **Manutenção (Administrativo)**
    - `GET /api/painel/gestao/usuarios` e `GET /api/painel/gestao/usuarios/{matricula}`
@@ -106,4 +133,4 @@ Todo erro (negócio, validação, 401/403 da segurança, rota inexistente ou err
 }
 ```
 
-`campos` só aparece em erro de validação. Erro 500 não expõe stack trace (fica só no log).
+`campos` só aparece em erro de validação; `codigo` só quando o cliente precisa reagir (ex.: `CREDENCIAL_EXPIRADA`). Erro 500 não expõe stack trace (fica só no log).
