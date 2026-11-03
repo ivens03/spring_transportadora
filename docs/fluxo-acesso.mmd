@@ -1,0 +1,66 @@
+graph TD
+    %% Início: só o Administrativo cria matrículas (o 1º é criado na subida do sistema)
+    A([Administrativo solicita Nova Matrícula]) --> B{Qual o Vínculo?}
+
+    %% Ramificação Principal
+    B -->|EXTERNO - Operação Externa| C[Matrícula ENT-xxxxxx: Entregador]
+    B -->|INTERNO - Operação Interna| D[Matrícula FUN-xxxxxx: Funcionário]
+
+    %% Credencial de cada vínculo
+    C --> CA[[Código de ativação 72h - uso único]]
+    D --> DA[[Código de ativação 72h - uso único]]
+    CA --> CC{{Credencial APP_ENTREGADOR<br/>login: matrícula + PIN 6 dígitos<br/>token 12h - cobre a jornada}}
+    DA --> DC{{Credencial PAINEL_WEB<br/>login: e-mail corporativo + senha<br/>token 8h - expediente}}
+
+    %% Fluxo Entregador
+    CC --> E[Módulo: App do Entregador - /api/app]
+    E --> E1(Ver entregas atribuídas)
+    E --> E2(Atualizar status da entrega)
+    E --> E3(Sincronizar posição GPS)
+    E -.-> E4>Sem acesso a painel web - token do app recebe 403 no painel]
+
+    %% Fluxo Funcionário e Subdivisões
+    DC --> F{Qual o Departamento?}
+
+    %% Administrativo (Foco em Estrutura)
+    F -->|ADMINISTRATIVO| G[Módulo: Gestão & Cadastros Base - /api/painel/gestao]
+    G --> G0(Gerar matrículas, reemitir código, bloquear)
+    G --> G1(Cadastrar Motoristas / CNH)
+    G --> G2(Cadastrar Veículos e Capacidades)
+    G --> G3(Cadastrar Empresas Clientes)
+
+    %% Suporte (Foco Operacional e Despacho)
+    F -->|SUPORTE| S[Módulo: Operação Diária & Despacho - /api/painel/operacao]
+    S --> S1(Cadastrar Volumes e Entregas)
+    S --> S2(Acompanhar Mapa de Entregas)
+    S --> S3(Tratar Atrasos e Dispositivos Offline)
+
+    %% Financeiro (Foco Estratégico e Pricing)
+    F -->|FINANCEIRO| H[Módulo: Financeiro & Precificação - /api/painel/financeiro]
+    H --> H1(Analisar viabilidade para Frete Grátis)
+    H --> H2(Definir margem de desconto por Rota/Trajeto)
+    H --> H3(Consultar faturamento e custos da operação)
+
+    %% Desenvolvimento
+    F -->|DESENVOLVIMENTO| I[Módulo: Monitoramento Técnico - /api/painel/monitoramento]
+    I --> I1(Monitoramento de Filas/Mensageria)
+    I --> I2(Logs de dispositivos e erros)
+
+    %% Regras comuns às duas credenciais
+    CC -.-> R1>5 erros seguidos travam o login por 15 min]
+    DC -.-> R1
+    G0 -.->|esqueceu PIN/senha, trocou de celular ou desbloqueio| CA
+    G0 -.-> DA
+
+    %% Estilos aplicados com segurança
+    classDef start_end fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff;
+    classDef entregador fill:#17a2b8,stroke:#117a8b,stroke-width:2px,color:#fff;
+    classDef funcionario fill:#007bff,stroke:#0056b3,stroke-width:2px,color:#fff;
+    classDef credencial fill:#ffc107,stroke:#d39e00,stroke-width:2px,color:#212529;
+    classDef permissao fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,color:#333;
+
+    class A start_end;
+    class C entregador;
+    class D funcionario;
+    class CA,DA,CC,DC credencial;
+    class E1,E2,E3,G0,G1,G2,G3,S1,S2,S3,H1,H2,H3,I1,I2 permissao;
