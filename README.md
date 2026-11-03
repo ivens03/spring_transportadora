@@ -4,26 +4,35 @@ Projeto do MBA (Backend 03). Sistema que rastreia entregas em tempo real para um
 
 **Stack:** Java 25 · Spring Boot 4.1 · Spring Security 7 (JWT) · Spring Data JPA · Flyway · PostgreSQL 17 · Testcontainers
 
-## Arquitetura em camadas
+## Arquitetura: por módulo, em camadas dentro de cada um
 
 ```
 br.com.fametro.spring.transportadora
-├── config/               SecurityConfig, JwtConfig, AppConfig, RotaCertaProperties, AdministradorInicialConfig
-├── controller/           recebe HTTP, valida (@Valid) e delega ao service — sem regra de negócio
-├── dto/
-│   ├── request/          o que a API recebe (UsuarioRequest, LoginAppRequest, ...)
-│   └── response/         o que a API devolve (UsuarioResponse, TokenResponse, ...) — a entidade nunca sai da API
-├── service/              regras de negócio e transações
-├── repository/           acesso ao banco (Spring Data JPA)
-├── model/                entidades JPA
-│   └── enums/            Perfil, Vinculo, Departamento, TipoCredencial, StatusUsuario
-└── exception/
-    ├── custom/           exceções da aplicação (RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409)
-    ├── dto/              ErroResponse e CampoErroResponse (corpo padrão de erro)
-    └── handler/          GlobalExceptionHandler (controllers) e SecurityExceptionHandler (401/403 do Spring Security)
+├── usuario/                     cadastro e manutenção de usuários (entregadores e funcionários)
+│   ├── config/                  AdministradorInicialConfig (cria o 1º ADMINISTRATIVO na subida)
+│   ├── controller/              UsuarioController
+│   ├── dto/request/             UsuarioRequest
+│   ├── dto/response/            UsuarioResponse, CodigoAtivacaoResponse
+│   ├── model/                   Usuario
+│   │   └── enums/               Perfil, Vinculo, Departamento, TipoCredencial, StatusUsuario
+│   ├── repository/              UsuarioRepository
+│   └── service/                 UsuarioService, CodigoAtivacao, PoliticaCredencial
+├── autenticacao/                login, ativação, token e regras de acesso
+│   ├── config/                  SecurityConfig (matriz de acesso), JwtConfig
+│   ├── controller/              AutenticacaoController
+│   ├── dto/request/             LoginAppRequest, LoginPainelRequest, AtivacaoRequest
+│   ├── dto/response/            TokenResponse, SessaoResponse
+│   └── service/                 AutenticacaoService, TokenService
+├── config/                      configurações gerais: AppConfig, RotaCertaProperties
+└── exception/                   tratamento de erro global (vale para todos os módulos)
+    ├── custom/                  RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409
+    ├── dto/                     ErroResponse, CampoErroResponse
+    └── handler/                 GlobalExceptionHandler, SecurityExceptionHandler (401/403)
 ```
 
-Fluxo de uma requisição: `controller` → `service` → `repository` → `model`; o service devolve DTO de response.
+- Dentro do módulo: `controller` → `service` → `repository` → `model`; o service devolve DTO de response.
+- Dependência entre módulos em um sentido só: `autenticacao` usa `usuario`; `usuario` não conhece `autenticacao`.
+- Próximos módulos (entregas, rastreamento, ...) seguem a mesma estrutura.
 
 ## Como rodar
 
