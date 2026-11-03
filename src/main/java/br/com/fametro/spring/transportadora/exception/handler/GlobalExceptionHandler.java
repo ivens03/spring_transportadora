@@ -30,9 +30,10 @@ public class GlobalExceptionHandler {
 
     // ---------- exceções da aplicação (pasta exception/custom)
 
+    /** Requisição bem formada, mas que quebra regra de negócio: 422 (o 400 fica para formato inválido). */
     @ExceptionHandler(RegraNegocioException.class)
     public ResponseEntity<ErroResponse> regraNegocio(RegraNegocioException ex, HttpServletRequest req) {
-        return responder(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+        return responder(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage(), req);
     }
 
     @ExceptionHandler(CredenciaisInvalidasException.class)

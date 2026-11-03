@@ -5,12 +5,14 @@ import br.com.fametro.spring.transportadora.exception.custom.ConflitoException;
 import br.com.fametro.spring.transportadora.exception.custom.RecursoNaoEncontradoException;
 import br.com.fametro.spring.transportadora.exception.custom.RegraNegocioException;
 import br.com.fametro.spring.transportadora.seguranca.service.CredencialService;
+import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioPatchRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.response.CodigoAtivacaoResponse;
 import br.com.fametro.spring.transportadora.usuario.dto.response.UsuarioResponse;
 import br.com.fametro.spring.transportadora.usuario.model.Usuario;
 import br.com.fametro.spring.transportadora.usuario.model.enums.Departamento;
 import br.com.fametro.spring.transportadora.usuario.model.enums.Perfil;
+import br.com.fametro.spring.transportadora.usuario.model.enums.StatusUsuario;
 import br.com.fametro.spring.transportadora.usuario.model.enums.Vinculo;
 import br.com.fametro.spring.transportadora.usuario.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
@@ -78,13 +80,49 @@ public class UsuarioService {
         return CodigoAtivacaoResponse.de(usuario, codigo, expiraEm);
     }
 
+    /** PATCH: altera só o que veio no corpo (nome, e-mail e/ou status = BLOQUEADO). */
     @Transactional
-    public void bloquear(String matricula, String matriculaSolicitante) {
-        Usuario usuario = carregar(matricula);
-        if (usuario.getMatricula().equals(matriculaSolicitante)) {
-            throw new RegraNegocioException("Não é possível bloquear o próprio usuário.");
+    public UsuarioResponse atualizar(String matricula, UsuarioPatchRequest request, String matriculaSolicitante) {
+        if (request.nome() == null && request.email() == null && request.status() == null) {
+            throw new RegraNegocioException("Informe ao menos um campo para alterar: nome, email ou status.");
         }
-        usuario.bloquear(clock.instant());
+        Usuario usuario = carregar(matricula);
+        Instant agora = clock.instant();
+
+        if (request.nome() != null) {
+            if (request.nome().isBlank()) {
+                throw new RegraNegocioException("O nome não pode ficar em branco.");
+            }
+            usuario.alterarNome(request.nome().trim(), agora);
+        }
+        if (request.email() != null) {
+            alterarEmail(usuario, Usuario.normalizarEmail(request.email()), agora);
+        }
+        if (request.status() != null) {
+            if (request.status() != StatusUsuario.BLOQUEADO) {
+                throw new RegraNegocioException("Pelo PATCH o status só pode ir para BLOQUEADO. Para reativar, gere um novo código: "
+                        + "POST /api/v1/usuarios/" + usuario.getMatricula() + "/codigos-ativacao.");
+            }
+            if (usuario.getMatricula().equals(matriculaSolicitante)) {
+                throw new RegraNegocioException("Não é possível bloquear o próprio usuário.");
+            }
+            usuario.bloquear(agora);
+        }
+        return UsuarioResponse.de(usuario);
+    }
+
+    private void alterarEmail(Usuario usuario, String email, Instant agora) {
+        if (email.isBlank()) {
+            if (usuario.getPerfil().getVinculo() == Vinculo.INTERNO) {
+                throw new RegraNegocioException("Funcionário precisa de e-mail corporativo (é o login do painel).");
+            }
+            usuario.alterarEmail(null, agora);
+            return;
+        }
+        if (!email.equals(usuario.getEmail()) && usuarioRepository.existsByEmail(email)) {
+            throw new ConflitoException("Já existe usuário com este e-mail.");
+        }
+        usuario.alterarEmail(email, agora);
     }
 
     /** Cria o primeiro ADMINISTRATIVO (senão ninguém conseguiria cadastrar usuários). Idempotente. */

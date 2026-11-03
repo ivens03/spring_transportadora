@@ -1,7 +1,6 @@
 package br.com.fametro.spring.transportadora.autenticacao.config;
 
 import br.com.fametro.spring.transportadora.exception.handler.SecurityExceptionHandler;
-import br.com.fametro.spring.transportadora.usuario.model.enums.Perfil;
 import br.com.fametro.spring.transportadora.usuario.model.enums.TipoCredencial;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,22 +17,28 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ABASTECIMENTO_REGISTRAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.CONSUMO_VER_METRICAS;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.USUARIO_GERENCIAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.VEICULO_GERENCIAR;
 import static org.springframework.security.authorization.AuthorityAuthorizationManager.hasAuthority;
-import static org.springframework.security.authorization.AuthorityAuthorizationManager.hasRole;
 
 /**
- * Matriz de acesso (ver docs/fluxo-acesso.mmd):
+ * Matriz de acesso por RECURSO + PERMISSÃO do token (ver docs/fluxo-acesso.mmd). Negado por padrão:
+ * só funciona o que estiver liberado aqui.
  * <pre>
- * /api/v1/auth/**                 público (tokens, ativações, credencial) — /api/v1/auth/sessao exige token
- * /api/v1/app/**                  credencial APP_ENTREGADOR + perfil ENTREGADOR
- * /api/v1/painel/gestao/**        credencial PAINEL_WEB + ADMINISTRATIVO
- * /api/v1/painel/operacao/**      credencial PAINEL_WEB + SUPORTE
- * /api/v1/painel/financeiro/**    credencial PAINEL_WEB + FINANCEIRO
- * /api/v1/painel/monitoramento/** credencial PAINEL_WEB + DESENVOLVIMENTO
- * /swagger-ui.html, /v3/api-docs  público (documentação)
+ * POST  /api/v1/auth/app/tokens, /painel/tokens, /credenciais   público
+ * PATCH /api/v1/auth/credenciais/{matricula}                     público (exige a credencial atual)
+ * GET   /api/v1/auth/sessao                                       qualquer token válido
+ * /api/v1/usuarios/**                                             painel + usuario:gerenciar       (ADMINISTRATIVO)
+ * /api/v1/veiculos/{id}/metricas-consumo, /api/v1/metricas-consumo painel + consumo:ver-metricas  (FINANCEIRO)
+ * /api/v1/veiculos/{id}/abastecimentos/**                         painel + abastecimento:registrar (ADM, SUPORTE, FINANCEIRO)
+ * /api/v1/veiculos/**                                             painel + veiculo:gerenciar      (ADM, SUPORTE, FINANCEIRO)
+ * /swagger-ui.html, /v3/api-docs                                  público (documentação)
+ * qualquer outra rota                                             negada
  * </pre>
- * Os caminhos são relativos ao context path: /transportadora_dev (dev) ou /transportadora (prod).
- * O token do app nunca entra no painel (entregador "sem acesso a painel web") e vice-versa.
+ * Todos os recursos do painel exigem a credencial PAINEL_WEB: o token do app nunca entra (entregador
+ * "sem acesso a painel web"). Caminhos relativos ao context path (/transportadora_dev ou /transportadora).
  */
 @Configuration
 public class SecurityConfig {
@@ -48,20 +53,21 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // públicos: login, ativação e troca de PIN/senha (quem está com a senha vencida não tem token)
                         .requestMatchers(HttpMethod.POST,
-                                "/api/v1/auth/app/tokens", "/api/v1/auth/painel/tokens", "/api/v1/auth/ativacoes").permitAll()
-                        .requestMatchers(HttpMethod.PUT,
-                                "/api/v1/auth/app/credencial", "/api/v1/auth/painel/credencial").permitAll()
+                                "/api/v1/auth/app/tokens", "/api/v1/auth/painel/tokens", "/api/v1/auth/credenciais").permitAll()
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/auth/credenciais/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/sessao").authenticated()
                         // documentação (no prod pode ser desligada com SWAGGER_ENABLED=false)
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
-                        // módulos
-                        .requestMatchers("/api/v1/app/**").access(exige(TipoCredencial.APP_ENTREGADOR, Perfil.ENTREGADOR))
-                        .requestMatchers("/api/v1/painel/gestao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.ADMINISTRATIVO))
-                        .requestMatchers("/api/v1/painel/operacao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.SUPORTE))
-                        .requestMatchers("/api/v1/painel/financeiro/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.FINANCEIRO))
-                        .requestMatchers("/api/v1/painel/monitoramento/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.DESENVOLVIMENTO))
-                        .requestMatchers("/api/v1/painel/**").hasAuthority(TipoCredencial.PAINEL_WEB.authority())
-                        .anyRequest().authenticated())
+                        // recursos do painel (a ordem importa: o mais específico primeiro)
+                        .requestMatchers("/api/v1/usuarios", "/api/v1/usuarios/**").access(painel(USUARIO_GERENCIAR))
+                        .requestMatchers(HttpMethod.GET, "/api/v1/metricas-consumo", "/api/v1/veiculos/*/metricas-consumo")
+                                .access(painel(CONSUMO_VER_METRICAS))
+                        .requestMatchers("/api/v1/veiculos/*/abastecimentos", "/api/v1/veiculos/*/abastecimentos/**")
+                                .access(painel(ABASTECIMENTO_REGISTRAR))
+                        .requestMatchers("/api/v1/veiculos", "/api/v1/veiculos/**").access(painel(VEICULO_GERENCIAR))
+                        // negado por padrão
+                        .anyRequest().denyAll())
                 .oauth2ResourceServer(rs -> rs
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint(securityExceptionHandler)
@@ -72,12 +78,13 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private static AuthorizationManager<RequestAuthorizationContext> exige(TipoCredencial credencial, Perfil perfil) {
-        return AuthorizationManagers.allOf(hasAuthority(credencial.authority()), hasRole(perfil.name()));
+    /** Token do painel web E a permissão pedida. */
+    private static AuthorizationManager<RequestAuthorizationContext> painel(String permissao) {
+        return AuthorizationManagers.allOf(hasAuthority(TipoCredencial.PAINEL_WEB.authority()), hasAuthority(permissao));
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return PasswordEncoderFactories.createDelegatingPasswordEncoder(); // BCrypt
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder(); // BCrypt (código de ativação)
     }
 }

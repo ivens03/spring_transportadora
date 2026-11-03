@@ -10,10 +10,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,7 +31,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 public abstract class IntegracaoTestBase {
 
-    protected static final String USUARIOS = "/api/v1/painel/gestao/usuarios";
+    protected static final String USUARIOS = "/api/v1/usuarios";
+    protected static final String VEICULOS = "/api/v1/veiculos";
+    protected static final String METRICAS = "/api/v1/metricas-consumo";
     protected static final String PIN = "482917";
     protected static final String SENHA = "SenhaForte2026";
 
@@ -74,9 +79,29 @@ public abstract class IntegracaoTestBase {
                 .contentType(MediaType.APPLICATION_JSON).content(json));
     }
 
+    /** Primeiro acesso: POST /api/v1/auth/credenciais (201). */
     protected ResultActions ativar(String matricula, String codigo, String credencial) throws Exception {
-        return mvc.perform(post("/api/v1/auth/ativacoes").contentType(MediaType.APPLICATION_JSON).content("""
-                {"matricula":"%s","codigoAtivacao":"%s","novaCredencial":"%s"}""".formatted(matricula, codigo, credencial)));
+        return mvc.perform(post("/api/v1/auth/credenciais").contentType(MediaType.APPLICATION_JSON).content("""
+                {"matricula":"%s","codigoAtivacao":"%s","credencial":"%s"}""".formatted(matricula, codigo, credencial)));
+    }
+
+    /** Troca de PIN/senha: PATCH /api/v1/auth/credenciais/{matricula} (200). */
+    protected ResultActions trocar(String matricula, String atual, String nova) throws Exception {
+        return mvc.perform(patch("/api/v1/auth/credenciais/{m}", matricula).contentType(MediaType.APPLICATION_JSON).content("""
+                {"credencialAtual":"%s","novaCredencial":"%s"}""".formatted(atual, nova)));
+    }
+
+    /** Cria funcionário do departamento, ativa a senha e devolve o token do painel. */
+    protected String tokenFuncionario(String departamento) throws Exception {
+        String email = emailUnico();
+        Criado fun = criar(tokenAdmin(), funcionario(email, departamento));
+        ativar(fun.matricula(), fun.codigo(), SENHA).andExpect(status().isCreated());
+        return tokenPainel(email, SENHA);
+    }
+
+    protected ResultActions enviar(MockHttpServletRequestBuilder req, String token, String json) throws Exception {
+        return mvc.perform(req.header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json));
     }
 
     protected ResultActions loginApp(String matricula, String pin) throws Exception {
@@ -102,6 +127,38 @@ public abstract class IntegracaoTestBase {
         return """
                 {"nome":"Funcionario Teste","email":"%s","vinculo":"INTERNO","departamento":"%s"}"""
                 .formatted(email, departamento);
+    }
+
+    /** Placa Mercosul aleatória (ABC1D23), para os testes não colidirem no índice único. */
+    protected static String placaUnica() {
+        ThreadLocalRandom r = ThreadLocalRandom.current();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 3; i++) sb.append((char) ('A' + r.nextInt(26)));
+        return sb.append(r.nextInt(10)).append((char) ('A' + r.nextInt(26))).append(r.nextInt(10)).append(r.nextInt(10)).toString();
+    }
+
+    /** JSON de cadastro de veículo. */
+    protected static String veiculo(String placa, String combustivel, String consumoReferencia) {
+        return """
+                {"placa":"%s","marca":"Fiat","modelo":"Fiorino","anoFabricacao":2023,"tipo":"UTILITARIO",
+                 "combustivel":"%s","capacidadeCargaKg":650,"capacidadeVolumeM3":3.1,
+                 "consumoReferenciaKmPorLitro":%s,"quilometragemAtual":100}"""
+                .formatted(placa, combustivel, consumoReferencia);
+    }
+
+    /** Cadastra veículo e devolve o id. */
+    protected long cadastrarVeiculo(String token, String json) throws Exception {
+        Number id = JsonPath.read(enviar(post(VEICULOS), token, json)
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        return id.longValue();
+    }
+
+    protected ResultActions abastecer(String token, long veiculoId, String dataHora, int odometro,
+                                      String litros, String valor, String combustivel) throws Exception {
+        return enviar(post(VEICULOS + "/{id}/abastecimentos", veiculoId), token, """
+                {"dataHora":"%s","odometroKm":%d,"litros":%s,"valorTotal":%s,"combustivel":"%s","posto":"Posto Teste"}"""
+                .formatted(dataHora, odometro, litros, valor, combustivel));
     }
 
     protected static String emailUnico() {

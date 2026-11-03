@@ -133,6 +133,16 @@ public class Usuario {
         this.atualizadoEm = agora;
     }
 
+    public void alterarNome(String nome, Instant agora) {
+        this.nome = nome;
+        this.atualizadoEm = agora;
+    }
+
+    public void alterarEmail(String email, Instant agora) {
+        this.email = email;
+        this.atualizadoEm = agora;
+    }
+
     public void bloquear(Instant agora) {
         this.status = StatusUsuario.BLOQUEADO;
         this.atualizadoEm = agora;

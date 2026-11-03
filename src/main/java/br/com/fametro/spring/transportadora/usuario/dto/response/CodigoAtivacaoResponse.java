@@ -21,8 +21,8 @@ public record CodigoAtivacaoResponse(String matricula, String nome, Vinculo vinc
     public static CodigoAtivacaoResponse de(Usuario u, String codigo, Instant expiraEm) {
         Perfil p = u.getPerfil();
         String instrucao = p.getTipoCredencial() == TipoCredencial.APP_ENTREGADOR
-                ? "No app, informe matrícula + código e cadastre um PIN de 6 dígitos (POST /api/v1/auth/ativacoes)."
-                : "No painel, informe matrícula + código e cadastre uma senha (POST /api/v1/auth/ativacoes). O login é pelo e-mail.";
+                ? "No app, informe matrícula + código e cadastre um PIN de 6 dígitos (POST /api/v1/auth/credenciais)."
+                : "No painel, informe matrícula + código e cadastre uma senha (POST /api/v1/auth/credenciais). O login é pelo e-mail.";
         return new CodigoAtivacaoResponse(u.getMatricula(), u.getNome(), p.getVinculo(), p.departamento(), p,
                 p.getTipoCredencial(), p.getModulo(), codigo, expiraEm, instrucao);
     }

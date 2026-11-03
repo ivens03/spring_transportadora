@@ -4,8 +4,8 @@ import br.com.fametro.spring.transportadora.autenticacao.config.JwtConfig;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.AtivacaoRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.LoginAppRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.LoginPainelRequest;
-import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaPinRequest;
-import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaSenhaRequest;
+import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaCredencialRequest;
+import br.com.fametro.spring.transportadora.autenticacao.dto.response.CredencialResponse;
 import br.com.fametro.spring.transportadora.autenticacao.dto.response.SessaoResponse;
 import br.com.fametro.spring.transportadora.autenticacao.dto.response.TokenResponse;
 import br.com.fametro.spring.transportadora.config.RotaCertaProperties;
@@ -32,7 +32,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * Login por tipo de credencial, ativação, troca de PIN/senha e dados da sessão atual.
+ * Login por tipo de credencial, criação (ativação) e troca de credencial, e dados da sessão atual.
  * Senha/PIN: Argon2id + salt + pepper ({@link CredencialService}); a chave de salt vence em 30 dias.
  */
 @Service
@@ -47,39 +47,29 @@ public class AutenticacaoService {
     private final RotaCertaProperties props;
     private final Clock clock;
 
-    // ------------------------------------------------------------------ login
+    // ------------------------------------------------------------------ tokens (login)
 
     /** App do entregador: matrícula + PIN. Funcionário não entra por aqui. */
     @Transactional(noRollbackFor = CredenciaisInvalidasException.class)
     public TokenResponse loginApp(LoginAppRequest request) {
-        return entrar(conferir(buscarApp(request.matricula()), request.pin(), false));
+        Optional<Usuario> usuario = usuarioRepository.findByMatricula(Usuario.normalizarMatricula(request.matricula()))
+                .filter(u -> u.tipoCredencial() == TipoCredencial.APP_ENTREGADOR);
+        return entrar(conferir(usuario, request.pin(), false));
     }
 
     /** Painel web: e-mail corporativo + senha. Entregador não entra por aqui. */
     @Transactional(noRollbackFor = CredenciaisInvalidasException.class)
     public TokenResponse loginPainel(LoginPainelRequest request) {
-        return entrar(conferir(buscarPainel(request.email()), request.senha(), false));
+        Optional<Usuario> usuario = usuarioRepository.findByEmail(Usuario.normalizarEmail(request.email()))
+                .filter(u -> u.tipoCredencial() == TipoCredencial.PAINEL_WEB);
+        return entrar(conferir(usuario, request.senha(), false));
     }
 
-    // ------------------------------------------------------------------ troca (obrigatória após 30 dias)
+    // ------------------------------------------------------------------ credenciais
 
-    @Transactional(noRollbackFor = CredenciaisInvalidasException.class)
-    public TokenResponse trocarPin(TrocaPinRequest request) {
-        Usuario usuario = conferir(buscarApp(request.matricula()), request.pinAtual(), true).usuario();
-        return trocar(usuario, request.pinAtual(), request.novoPin());
-    }
-
-    @Transactional(noRollbackFor = CredenciaisInvalidasException.class)
-    public TokenResponse trocarSenha(TrocaSenhaRequest request) {
-        Usuario usuario = conferir(buscarPainel(request.email()), request.senhaAtual(), true).usuario();
-        return trocar(usuario, request.senhaAtual(), request.novaSenha());
-    }
-
-    // ------------------------------------------------------------------ ativação
-
-    /** Primeiro acesso: troca o código de ativação pelo PIN (app) ou senha (painel). */
+    /** POST /credenciais — primeiro acesso: troca o código de ativação pelo PIN (app) ou senha (painel). */
     @Transactional
-    public void ativar(AtivacaoRequest request) {
+    public CredencialResponse ativar(AtivacaoRequest request) {
         Instant agora = clock.instant();
         Usuario usuario = usuarioRepository.findByMatricula(Usuario.normalizarMatricula(request.matricula()))
                 .filter(u -> u.aguardandoAtivacao(agora))
@@ -87,9 +77,28 @@ public class AutenticacaoService {
                         u.getCodigoAtivacaoHash()))
                 .orElseThrow(() -> new CredenciaisInvalidasException("Matrícula ou código de ativação inválido/expirado."));
 
-        PoliticaCredencial.validar(usuario.tipoCredencial(), request.novaCredencial());
-        CredencialGerada credencial = credencialService.gerar(usuario.getId(), request.novaCredencial());
+        PoliticaCredencial.validar(usuario.tipoCredencial(), request.credencial());
+        CredencialGerada credencial = credencialService.gerar(usuario.getId(), request.credencial());
         usuario.ativar(credencial.hash(), agora);
+        return new CredencialResponse(usuario.getMatricula(), usuario.tipoCredencial(), credencial.expiraEm());
+    }
+
+    /**
+     * PATCH /credenciais/{matricula} — troca o PIN ou a senha (obrigatória após 30 dias, ou voluntária).
+     * Exige a credencial atual (aceita mesmo vencida). Não devolve token: o cliente faz login com a nova.
+     */
+    @Transactional(noRollbackFor = CredenciaisInvalidasException.class)
+    public CredencialResponse trocar(String matricula, TrocaCredencialRequest request) {
+        Usuario usuario = conferir(usuarioRepository.findByMatricula(Usuario.normalizarMatricula(matricula)),
+                request.credencialAtual(), true).usuario();
+
+        PoliticaCredencial.validar(usuario.tipoCredencial(), request.novaCredencial());
+        if (request.novaCredencial().equals(request.credencialAtual())) {
+            throw new RegraNegocioException("A nova credencial precisa ser diferente da atual.");
+        }
+        CredencialGerada credencial = credencialService.gerar(usuario.getId(), request.novaCredencial());
+        usuario.trocarCredencial(credencial.hash(), clock.instant());
+        return new CredencialResponse(usuario.getMatricula(), usuario.tipoCredencial(), credencial.expiraEm());
     }
 
     /** Dados do token atual (o front usa para montar o menu do módulo). */
@@ -104,16 +113,6 @@ public class AutenticacaoService {
 
     /** Usuário com a senha/PIN já conferido e o resultado da conferência (traz o vencimento da chave). */
     private record Conferido(Usuario usuario, VerificacaoCredencial verificacao) {
-    }
-
-    private Optional<Usuario> buscarApp(String matricula) {
-        return usuarioRepository.findByMatricula(Usuario.normalizarMatricula(matricula))
-                .filter(u -> u.tipoCredencial() == TipoCredencial.APP_ENTREGADOR);
-    }
-
-    private Optional<Usuario> buscarPainel(String email) {
-        return usuarioRepository.findByEmail(Usuario.normalizarEmail(email))
-                .filter(u -> u.tipoCredencial() == TipoCredencial.PAINEL_WEB);
     }
 
     /**
@@ -134,7 +133,7 @@ public class AutenticacaoService {
             throw new CredenciaisInvalidasException();
         }
         if (verificacao.situacao() == VerificacaoCredencial.Situacao.EXPIRADA && !aceitarExpirada) {
-            throw new CredencialExpiradaException(mensagemExpirada(usuario.tipoCredencial()));
+            throw new CredencialExpiradaException(mensagemExpirada(usuario));
         }
         return new Conferido(usuario, verificacao);
     }
@@ -144,21 +143,8 @@ public class AutenticacaoService {
         return tokenService.emitir(conferido.usuario(), conferido.verificacao().expiraEm());
     }
 
-    private TokenResponse trocar(Usuario usuario, String atual, String nova) {
-        PoliticaCredencial.validar(usuario.tipoCredencial(), nova);
-        if (nova.equals(atual)) {
-            throw new RegraNegocioException("A nova credencial precisa ser diferente da atual.");
-        }
-        Instant agora = clock.instant();
-        CredencialGerada credencial = credencialService.gerar(usuario.getId(), nova);
-        usuario.trocarCredencial(credencial.hash(), agora);
-        usuario.registrarLoginComSucesso(agora);
-        return tokenService.emitir(usuario, credencial.expiraEm());
-    }
-
-    private static String mensagemExpirada(TipoCredencial tipo) {
-        return tipo == TipoCredencial.APP_ENTREGADOR
-                ? "Seu PIN venceu (validade de 30 dias). Cadastre um novo em PUT /api/v1/auth/app/credencial."
-                : "Sua senha venceu (validade de 30 dias). Cadastre uma nova em PUT /api/v1/auth/painel/credencial.";
+    private static String mensagemExpirada(Usuario usuario) {
+        String oQue = usuario.tipoCredencial() == TipoCredencial.APP_ENTREGADOR ? "Seu PIN venceu" : "Sua senha venceu";
+        return oQue + " (validade de 30 dias). Troque em PATCH /api/v1/auth/credenciais/" + usuario.getMatricula() + ".";
     }
 }

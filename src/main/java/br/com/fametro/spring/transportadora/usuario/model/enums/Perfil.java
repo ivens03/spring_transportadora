@@ -5,28 +5,34 @@ import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.*;
+
 /**
  * Perfil de acesso = folha do fluxo "Solicitação de Nova Matrícula" (docs/fluxo-acesso.mmd).
- * Cada perfil tem um vínculo, um tipo de credencial, um módulo e as permissões daquele módulo.
+ * Cada perfil tem um vínculo, um tipo de credencial, um módulo e as permissões.
+ * As permissões vão no token e é por elas que o SecurityConfig libera cada recurso.
  */
 @Getter
 @RequiredArgsConstructor
 public enum Perfil {
 
     ENTREGADOR(Vinculo.EXTERNO, TipoCredencial.APP_ENTREGADOR, "ENT", "App do Entregador",
-            List.of("entrega:ver-atribuidas", "entrega:atualizar-status", "posicao:sincronizar")),
+            List.of(ENTREGA_VER_ATRIBUIDAS, ENTREGA_ATUALIZAR_STATUS, POSICAO_SINCRONIZAR)),
 
     ADMINISTRATIVO(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Gestão & Cadastros Base",
-            List.of("usuario:gerenciar", "motorista:cadastrar", "veiculo:cadastrar", "cliente:cadastrar")),
+            List.of(USUARIO_GERENCIAR, MOTORISTA_CADASTRAR, CLIENTE_CADASTRAR,
+                    VEICULO_GERENCIAR, ABASTECIMENTO_REGISTRAR)),
 
     SUPORTE(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Operação Diária & Despacho",
-            List.of("entrega:cadastrar", "mapa:acompanhar", "ocorrencia:tratar")),
+            List.of(ENTREGA_CADASTRAR, MAPA_ACOMPANHAR, OCORRENCIA_TRATAR,
+                    VEICULO_GERENCIAR, ABASTECIMENTO_REGISTRAR)),
 
     FINANCEIRO(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Financeiro & Precificação",
-            List.of("frete:analisar-gratis", "desconto:definir-por-rota", "faturamento:consultar")),
+            List.of(FRETE_ANALISAR_GRATIS, DESCONTO_DEFINIR_POR_ROTA, FATURAMENTO_CONSULTAR,
+                    VEICULO_GERENCIAR, ABASTECIMENTO_REGISTRAR, CONSUMO_VER_METRICAS)),
 
     DESENVOLVIMENTO(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Monitoramento Técnico",
-            List.of("mensageria:monitorar", "dispositivo:consultar-logs"));
+            List.of(MENSAGERIA_MONITORAR, DISPOSITIVO_CONSULTAR_LOGS));
 
     private final Vinculo vinculo;
     private final TipoCredencial tipoCredencial;

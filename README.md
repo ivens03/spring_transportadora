@@ -75,22 +75,36 @@ Em servidor, as mesmas chaves podem vir como variáveis de ambiente.
 | `ROTACERTA_PEPPER`                        | pepper do Argon2id (Base64, ≥ 32 bytes) — `openssl rand -base64 32` |
 | `ROTACERTA_ADMIN_EMAIL` / `ROTACERTA_ADMIN_SENHA` | primeiro ADMINISTRATIVO, criado na subida se não existir nenhum |
 
-## Acesso: um tipo de credencial por vínculo
+## Acesso: um tipo de credencial por vínculo, permissões por perfil
 
 Fluxo completo em [`docs/fluxo-acesso.mmd`](docs/fluxo-acesso.mmd) (Mermaid).
 
-| Vínculo  | Perfil (departamento) | Credencial       | Login                       | Token | Módulo / rotas                |
-|----------|-----------------------|------------------|-----------------------------|-------|-------------------------------|
-| EXTERNO  | ENTREGADOR            | `APP_ENTREGADOR` | matrícula `ENT-…` + PIN 6 dígitos | 12h | App do Entregador — `/api/v1/app/**` |
-| INTERNO  | ADMINISTRATIVO        | `PAINEL_WEB`     | e-mail + senha              | 8h    | Gestão & Cadastros — `/api/v1/painel/gestao/**` |
-| INTERNO  | SUPORTE               | `PAINEL_WEB`     | e-mail + senha              | 8h    | Operação & Despacho — `/api/v1/painel/operacao/**` |
-| INTERNO  | FINANCEIRO            | `PAINEL_WEB`     | e-mail + senha              | 8h    | Financeiro & Precificação — `/api/v1/painel/financeiro/**` |
-| INTERNO  | DESENVOLVIMENTO       | `PAINEL_WEB`     | e-mail + senha              | 8h    | Monitoramento Técnico — `/api/v1/painel/monitoramento/**` |
+| Vínculo  | Perfil (departamento) | Credencial       | Login                             | Token |
+|----------|-----------------------|------------------|-----------------------------------|-------|
+| EXTERNO  | ENTREGADOR            | `APP_ENTREGADOR` | matrícula `ENT-…` + PIN 6 dígitos | 12h   |
+| INTERNO  | ADMINISTRATIVO        | `PAINEL_WEB`     | e-mail + senha (matrícula `FUN-…`) | 8h   |
+| INTERNO  | SUPORTE               | `PAINEL_WEB`     | e-mail + senha                    | 8h    |
+| INTERNO  | FINANCEIRO            | `PAINEL_WEB`     | e-mail + senha                    | 8h    |
+| INTERNO  | DESENVOLVIMENTO       | `PAINEL_WEB`     | e-mail + senha                    | 8h    |
+
+O acesso é decidido pelas **permissões** que vão no token (claim `permissoes`), junto com o tipo de credencial.
+Toda rota não liberada explicitamente é **negada** (deny by default: 403 com token, 401 sem token).
+
+| Permissão | Quem tem | Libera |
+|---|---|---|
+| `usuario:gerenciar` | ADMINISTRATIVO | `/api/v1/usuarios/**` |
+| `veiculo:gerenciar` | ADMINISTRATIVO, SUPORTE, FINANCEIRO | `/api/v1/veiculos` (cadastro e manutenção da frota) |
+| `abastecimento:registrar` | ADMINISTRATIVO, SUPORTE, FINANCEIRO | `/api/v1/veiculos/{id}/abastecimentos/**` |
+| `consumo:ver-metricas` | FINANCEIRO | `/api/v1/metricas-consumo` e `/api/v1/veiculos/{id}/metricas-consumo` |
+| `entrega:*`, `posicao:sincronizar` | ENTREGADOR | app do entregador (próximos módulos) |
+| `motorista:cadastrar`, `cliente:cadastrar` | ADMINISTRATIVO | próximos módulos |
+| `entrega:cadastrar`, `mapa:acompanhar`, `ocorrencia:tratar` | SUPORTE | próximos módulos |
+| `frete:*`, `desconto:*`, `faturamento:consultar` | FINANCEIRO | próximos módulos |
+| `mensageria:monitorar`, `dispositivo:consultar-logs` | DESENVOLVIMENTO | próximos módulos |
 
 Regras:
 
 - Token do app **não entra no painel** (403) e o do painel não entra no app — o tipo de credencial vai no token.
-- Cada funcionário só entra no módulo do seu departamento.
 - Token do app é mais longo (12h) por causa da conexão instável dos entregadores: evita relogin na rua.
 - PIN: 6 dígitos, sem repetidos (`777777`) nem sequência (`123456`). Senha: ≥ 10 caracteres com letras e números.
 - 5 tentativas erradas travam o login por 15 minutos. Mensagem de erro sempre genérica.
@@ -109,40 +123,90 @@ Tabela `seguranca.chave_salt`: `salt`, `ativa` (marca a chave em uso; as anterio
 
 - Toda ativação ou troca de senha/PIN gera uma **chave de salt nova** e desativa a anterior.
 - Passou de `expira_em`: o login devolve **403** com `"codigo": "CREDENCIAL_EXPIRADA"` (só para quem acertou a senha/PIN).
-  O usuário troca em `PUT /api/v1/auth/app/credencial` (entregador) ou `PUT /api/v1/auth/painel/credencial` (funcionário),
-  que já devolvem o token novo. Vale para PIN e senha.
+  O usuário troca em `PATCH /api/v1/auth/credenciais/{matricula}` e depois faz login de novo. Vale para PIN e senha.
 - O login devolve `credencialExpiraEm`, para o app/painel avisar antes de vencer.
 - A troca também pode ser voluntária, antes dos 30 dias. A nova credencial precisa ser diferente da atual.
 
-### Endpoints (RESTful, versionados em `/api/v1`)
+## Frota: veículos, abastecimentos e métricas de consumo
+
+- **ADMINISTRATIVO, SUPORTE e FINANCEIRO** cadastram e mantêm os veículos e registram abastecimentos.
+- **Só o FINANCEIRO** vê as métricas de consumo.
+- Placa antiga (`ABC1234`) ou Mercosul (`ABC1D23`), gravada maiúscula e sem hífen; placa e RENAVAM são únicos.
+- RENAVAM, ano, tipo e combustível não mudam depois do cadastro (o combustível valida o histórico).
+- Abastecimento = **tanque cheio**. FLEX aceita GASOLINA ou ETANOL; veículo INATIVO não recebe abastecimento.
+- O odômetro precisa ficar entre o do abastecimento anterior e o do seguinte (por data). Assim um lançamento
+  atrasado é aceito, mas um km que andaria para trás é recusado. O mesmo veículo na mesma data/hora = 409 (reenvio).
+- Abastecimento não tem PATCH: é registro contábil, e lançamento errado se corrige com novo lançamento.
+
+Métricas (método do tanque cheio; período em datas inclusivas no fuso `America/Fortaleza`, padrão últimos 30 dias, máximo 366):
+
+| Campo | Cálculo |
+|---|---|
+| `kmRodados` | último odômetro − primeiro odômetro do período |
+| `litrosAbastecidos` / `gastoTotal` | soma de todos os abastecimentos do período |
+| `precoMedioLitro` | gastoTotal / litrosAbastecidos |
+| `consumoMedioKmPorLitro` | km rodados / litros a partir do 2º abastecimento (o 1º só enche o tanque de partida) |
+| `custoPorKm` | valor desses mesmos abastecimentos / km rodados |
+| `desvioPercentual` | (km/l − referência) / referência × 100 |
+| `situacao` | `DENTRO_DO_ESPERADO`, `CONSUMO_ACIMA_DO_ESPERADO` (km/l mais de 15% abaixo da referência), `SEM_REFERENCIA`, `DADOS_INSUFICIENTES` |
+
+A visão da frota soma os km e litros só dos veículos com km/l calculado e conta quantos estão acima do esperado.
+A tolerância (`rotacerta.frota.tolerancia-consumo-percentual`) e o fuso ficam no `application.properties`.
+
+## Endpoints (RESTful, versionados em `/api/v1`)
 
 Documentação completa e testável no Swagger. Caminhos relativos ao endereço base do perfil.
+
+Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de coleção é paginado
+(`page`, `size` máx. 100, `sort`); **atualização é sempre `PATCH`** parcial (`application/json` ou
+`application/merge-patch+json`), **não há `PUT`**; 400 = formato inválido, 409 = duplicado,
+422 = regra de negócio violada.
 
 | Método | Caminho | O que faz | Acesso |
 |---|---|---|---|
 | POST | `/api/v1/auth/app/tokens` | login do entregador (matrícula + PIN) → token | público |
 | POST | `/api/v1/auth/painel/tokens` | login do funcionário (e-mail + senha) → token | público |
-| POST | `/api/v1/auth/ativacoes` | ativa o usuário (código → PIN/senha) — 204 | público |
-| PUT | `/api/v1/auth/app/credencial` | troca o PIN (obrigatório a cada 30 dias) → token novo | público* |
-| PUT | `/api/v1/auth/painel/credencial` | troca a senha (obrigatório a cada 30 dias) → token novo | público* |
-| GET | `/api/v1/auth/sessao` | dados do token atual (perfil, módulo, permissões) | token |
-| POST | `/api/v1/painel/gestao/usuarios` | cadastra usuário — 201 + `Location` + código de ativação | ADMINISTRATIVO |
-| GET | `/api/v1/painel/gestao/usuarios?page=0&size=20&sort=nome,asc` | lista paginada | ADMINISTRATIVO |
-| GET | `/api/v1/painel/gestao/usuarios/{matricula}` | detalhe | ADMINISTRATIVO |
-| POST | `/api/v1/painel/gestao/usuarios/{matricula}/codigos-ativacao` | novo código (esqueceu PIN, trocou de celular, desbloqueio) — 201 | ADMINISTRATIVO |
-| PUT | `/api/v1/painel/gestao/usuarios/{matricula}/bloqueio` | bloqueia — 204, idempotente | ADMINISTRATIVO |
+| POST | `/api/v1/auth/credenciais` | primeiro acesso: código de ativação → PIN/senha — 201 | público |
+| PATCH | `/api/v1/auth/credenciais/{matricula}` | troca PIN/senha (obrigatória a cada 30 dias) — 200 | público* |
+| GET | `/api/v1/auth/sessao` | dados do token atual (perfil, permissões) | token |
+| POST | `/api/v1/usuarios` | cadastra usuário — 201 + `Location` + código de ativação | `usuario:gerenciar` |
+| GET | `/api/v1/usuarios?page=0&size=20&sort=nome,asc` | lista paginada | `usuario:gerenciar` |
+| GET | `/api/v1/usuarios/{matricula}` | detalhe | `usuario:gerenciar` |
+| PATCH | `/api/v1/usuarios/{matricula}` | altera nome/e-mail ou bloqueia (`{"status":"BLOQUEADO"}`) | `usuario:gerenciar` |
+| POST | `/api/v1/usuarios/{matricula}/codigos-ativacao` | novo código (esqueceu PIN, trocou de celular, desbloqueio) — 201 | `usuario:gerenciar` |
+| POST | `/api/v1/veiculos` | cadastra veículo — 201 + `Location` | `veiculo:gerenciar` |
+| GET | `/api/v1/veiculos?status=ATIVO&tipo=VAN` | lista paginada com filtros opcionais | `veiculo:gerenciar` |
+| GET | `/api/v1/veiculos/{id}` | detalhe | `veiculo:gerenciar` |
+| PATCH | `/api/v1/veiculos/{id}` | altera placa, marca/modelo, capacidades, referência, km (só aumenta), status | `veiculo:gerenciar` |
+| POST | `/api/v1/veiculos/{id}/abastecimentos` | registra abastecimento — 201 + `Location` | `abastecimento:registrar` |
+| GET | `/api/v1/veiculos/{id}/abastecimentos` | lista paginada (mais recente primeiro) | `abastecimento:registrar` |
+| GET | `/api/v1/veiculos/{id}/abastecimentos/{abastecimentoId}` | detalhe | `abastecimento:registrar` |
+| GET | `/api/v1/veiculos/{id}/metricas-consumo?inicio=2026-10-01&fim=2026-10-31` | métricas de um veículo | `consumo:ver-metricas` |
+| GET | `/api/v1/metricas-consumo?inicio=2026-10-01&fim=2026-10-31` | totais da frota + um item por veículo | `consumo:ver-metricas` |
 
 \* público porque quem está com a senha vencida não consegue token; exige a senha/PIN atual.
 
 Exemplos de corpo:
 
 ```json
-POST /api/v1/painel/gestao/usuarios
+POST /api/v1/usuarios
 { "nome": "João", "vinculo": "EXTERNO" }
 { "nome": "Maria", "email": "maria@empresa.com", "vinculo": "INTERNO", "departamento": "FINANCEIRO" }
 
-POST /api/v1/auth/ativacoes
-{ "matricula": "ENT-000001", "codigoAtivacao": "R26CWD5F", "novaCredencial": "482917" }
+POST /api/v1/auth/credenciais
+{ "matricula": "ENT-000001", "codigoAtivacao": "R26CWD5F", "credencial": "482917" }
+
+PATCH /api/v1/auth/credenciais/ENT-000001
+{ "credencialAtual": "482917", "novaCredencial": "905318" }
+
+POST /api/v1/veiculos
+{ "placa": "RIO2A18", "marca": "Fiat", "modelo": "Fiorino", "anoFabricacao": 2023, "tipo": "UTILITARIO",
+  "combustivel": "FLEX", "capacidadeCargaKg": 650, "capacidadeVolumeM3": 3.1,
+  "consumoReferenciaKmPorLitro": 11.5, "quilometragemAtual": 15230 }
+
+POST /api/v1/veiculos/1/abastecimentos
+{ "dataHora": "2026-11-03T08:15:00-03:00", "odometroKm": 15642, "litros": 38.42,
+  "valorTotal": 232.44, "combustivel": "GASOLINA", "posto": "Posto Aldeota" }
 ```
 
 ## Formato de erro
@@ -155,7 +219,7 @@ Todo erro (negócio, validação, 401/403 da segurança, rota inexistente ou err
   "status": 400,
   "erro": "Bad Request",
   "mensagem": "Dados inválidos.",
-  "caminho": "/transportadora_dev/api/v1/painel/gestao/usuarios",
+  "caminho": "/transportadora_dev/api/v1/usuarios",
   "campos": [ { "campo": "nome", "mensagem": "O nome é obrigatório." } ]
 }
 ```

@@ -3,13 +3,14 @@ package br.com.fametro.spring.transportadora.autenticacao.controller;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.AtivacaoRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.LoginAppRequest;
 import br.com.fametro.spring.transportadora.autenticacao.dto.request.LoginPainelRequest;
-import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaPinRequest;
-import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaSenhaRequest;
+import br.com.fametro.spring.transportadora.autenticacao.dto.request.TrocaCredencialRequest;
+import br.com.fametro.spring.transportadora.autenticacao.dto.response.CredencialResponse;
 import br.com.fametro.spring.transportadora.autenticacao.dto.response.SessaoResponse;
 import br.com.fametro.spring.transportadora.autenticacao.dto.response.TokenResponse;
 import br.com.fametro.spring.transportadora.autenticacao.service.AutenticacaoService;
 import br.com.fametro.spring.transportadora.exception.dto.ErroResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -18,12 +19,15 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,15 +35,14 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Recursos de autenticação (RESTful):
  * <pre>
- * POST /api/v1/auth/app/tokens        cria token do app (login do entregador)
- * POST /api/v1/auth/painel/tokens     cria token do painel (login do funcionário)
- * POST /api/v1/auth/ativacoes         ativa o usuário (código -> PIN/senha)
- * PUT  /api/v1/auth/app/credencial    substitui o PIN (obrigatório a cada 30 dias)
- * PUT  /api/v1/auth/painel/credencial substitui a senha (obrigatório a cada 30 dias)
- * GET  /api/v1/auth/sessao            dados do token atual
+ * POST  /api/v1/auth/app/tokens             cria token do app (login do entregador)
+ * POST  /api/v1/auth/painel/tokens          cria token do painel (login do funcionário)
+ * POST  /api/v1/auth/credenciais            cria a credencial (ativação: código -> PIN/senha)
+ * PATCH /api/v1/auth/credenciais/{matricula} troca PIN/senha (obrigatório a cada 30 dias)
+ * GET   /api/v1/auth/sessao                 dados do token atual
  * </pre>
  */
-@Tag(name = "Autenticação", description = "Login por tipo de credencial, ativação, troca de PIN/senha e sessão atual")
+@Tag(name = "Autenticação", description = "Tokens (login) por tipo de credencial, credenciais (ativação e troca de PIN/senha) e sessão atual")
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -75,44 +78,36 @@ public class AutenticacaoController {
         return ResponseEntity.ok(autenticacaoService.loginPainel(request));
     }
 
-    @Operation(summary = "Ativar usuário (primeiro acesso)",
+    @Operation(summary = "Criar credencial (ativação / primeiro acesso)",
             description = "Troca o código de ativação (8 caracteres, uso único, 72h) pelo PIN (entregador) ou senha (funcionário).")
     @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Usuário ativado"),
-            @ApiResponse(responseCode = "400", description = "PIN/senha fora da política", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Matrícula ou código inválido/expirado", content = @Content(schema = @Schema(implementation = ErroResponse.class)))
+            @ApiResponse(responseCode = "201", description = "Credencial criada; usuário ativo"),
+            @ApiResponse(responseCode = "400", description = "Campos obrigatórios ausentes", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Matrícula ou código inválido/expirado", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "422", description = "PIN/senha fora da política", content = @Content(schema = @Schema(implementation = ErroResponse.class)))
     })
     @SecurityRequirements
-    @PostMapping("/ativacoes")
-    public ResponseEntity<Void> ativar(@Valid @RequestBody AtivacaoRequest request) {
-        autenticacaoService.ativar(request);
-        return ResponseEntity.noContent().build();
+    @PostMapping("/credenciais")
+    public ResponseEntity<CredencialResponse> criarCredencial(@Valid @RequestBody AtivacaoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(autenticacaoService.ativar(request));
     }
 
-    @Operation(summary = "Trocar o PIN do entregador",
-            description = "Obrigatório quando o PIN vence (30 dias); também pode ser voluntário. Gera nova chave de salt e devolve token novo.")
+    @Operation(summary = "Trocar PIN ou senha",
+            description = """
+                    Obrigatório quando vence (30 dias, login devolve 403 CREDENCIAL_EXPIRADA); também pode ser voluntário.
+                    Vale para entregador (PIN) e funcionário (senha). Gera nova chave de salt. Depois, faça login com a nova.""")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "PIN trocado; token novo"),
-            @ApiResponse(responseCode = "400", description = "Novo PIN fora da política ou igual ao atual", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
-            @ApiResponse(responseCode = "401", description = "PIN atual incorreto", content = @Content(schema = @Schema(implementation = ErroResponse.class)))
+            @ApiResponse(responseCode = "200", description = "Credencial trocada"),
+            @ApiResponse(responseCode = "400", description = "Campos obrigatórios ausentes", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Credencial atual incorreta", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "422", description = "Nova credencial fora da política ou igual à atual", content = @Content(schema = @Schema(implementation = ErroResponse.class)))
     })
     @SecurityRequirements
-    @PutMapping("/app/credencial")
-    public ResponseEntity<TokenResponse> trocarPin(@Valid @RequestBody TrocaPinRequest request) {
-        return ResponseEntity.ok(autenticacaoService.trocarPin(request));
-    }
-
-    @Operation(summary = "Trocar a senha do funcionário",
-            description = "Obrigatório quando a senha vence (30 dias); também pode ser voluntário. Gera nova chave de salt e devolve token novo.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Senha trocada; token novo"),
-            @ApiResponse(responseCode = "400", description = "Nova senha fora da política ou igual à atual", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Senha atual incorreta", content = @Content(schema = @Schema(implementation = ErroResponse.class)))
-    })
-    @SecurityRequirements
-    @PutMapping("/painel/credencial")
-    public ResponseEntity<TokenResponse> trocarSenha(@Valid @RequestBody TrocaSenhaRequest request) {
-        return ResponseEntity.ok(autenticacaoService.trocarSenha(request));
+    @PatchMapping(path = "/credenciais/{matricula}", consumes = {MediaType.APPLICATION_JSON_VALUE, "application/merge-patch+json"})
+    public ResponseEntity<CredencialResponse> trocarCredencial(
+            @Parameter(description = "Matrícula do usuário", example = "ENT-000001") @PathVariable String matricula,
+            @Valid @RequestBody TrocaCredencialRequest request) {
+        return ResponseEntity.ok(autenticacaoService.trocar(matricula, request));
     }
 
     @Operation(summary = "Sessão atual", description = "Quem é o dono do token: perfil, módulo e permissões (o front monta o menu com isso).")

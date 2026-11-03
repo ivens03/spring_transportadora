@@ -6,43 +6,36 @@ import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.ResultMatcher;
 
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
+import java.util.Set;
 
 import static br.com.fametro.spring.transportadora.usuario.model.enums.Departamento.ADMINISTRATIVO;
-import static br.com.fametro.spring.transportadora.usuario.model.enums.Departamento.DESENVOLVIMENTO;
 import static br.com.fametro.spring.transportadora.usuario.model.enums.Departamento.FINANCEIRO;
 import static br.com.fametro.spring.transportadora.usuario.model.enums.Departamento.SUPORTE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Ativação, login por tipo de credencial, matriz de acesso e troca obrigatória de senha/PIN (30 dias). */
+/** Ativação, login por tipo de credencial, matriz de acesso por permissão e troca obrigatória de senha/PIN (30 dias). */
 class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
-
-    /** Rota "sonda" de cada módulo do painel: se o perfil pode entrar, cai em 404 (ainda não existe); se não, 403. */
-    private static final Map<Departamento, String> MODULO = Map.of(
-            ADMINISTRATIVO, "/api/v1/painel/gestao/sonda",
-            SUPORTE, "/api/v1/painel/operacao/sonda",
-            FINANCEIRO, "/api/v1/painel/financeiro/sonda",
-            DESENVOLVIMENTO, "/api/v1/painel/monitoramento/sonda");
 
     // ------------------------------------------------------------------ entregador
 
     @Test
-    void entregadorAtivaComPinEntraNoAppENaoEntraNoPainel() throws Exception {
+    void entregadorAtivaComPinEntraNoAppENaoAcessaRecursosDoPainel() throws Exception {
         Criado ent = criar(tokenAdmin(), entregador());
-        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isNoContent());
+        ativar(ent.matricula(), ent.codigo(), PIN)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.matricula").value(ent.matricula()))
+                .andExpect(jsonPath("$.tipoCredencial").value("APP_ENTREGADOR"))
+                .andExpect(jsonPath("$.expiraEm").exists());
 
         String bearer = JsonPath.read(loginApp(ent.matricula(), PIN)
                 .andExpect(status().isOk())
@@ -53,17 +46,12 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         mvc.perform(get("/api/v1/auth/sessao").header("Authorization", "Bearer " + bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.perfil").value("ENTREGADOR"))
-                .andExpect(jsonPath("$.modulo").value("App do Entregador"))
                 .andExpect(jsonPath("$.permissoes.length()").value(3));
 
-        acessar(bearer, "/api/v1/app/sonda")
-                .andExpect(status().isNotFound()) // autorizado (rota ainda não existe)
-                .andExpect(jsonPath("$.mensagem").value("Rota não encontrada."));
-        for (String modulo : MODULO.values()) {
-            acessar(bearer, modulo).andExpect(status().isForbidden()); // sem acesso a painel web
+        for (String recurso : new String[]{USUARIOS, VEICULOS, METRICAS}) {
+            acessar(bearer, recurso).andExpect(status().isForbidden()); // token do app não abre o painel
         }
         acessar(bearer, USUARIOS)
-                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.caminho").value(USUARIOS))
                 .andExpect(jsonPath("$.mensagem").exists());
@@ -74,21 +62,26 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         String email = emailUnico();
         Criado ent = criar(tokenAdmin(), """
                 {"nome":"Entregador Com Email","email":"%s","vinculo":"EXTERNO"}""".formatted(email));
-        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isNoContent());
+        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isCreated());
 
         loginPainel(email, PIN)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.mensagem").value("Credenciais inválidas."));
     }
 
-    // ------------------------------------------------------------------ funcionários
+    // ------------------------------------------------------------------ funcionários: matriz de acesso
 
+    /**
+     * Quem acessa o quê (deny by default):
+     * usuários = ADMINISTRATIVO; veículos e abastecimentos = ADMINISTRATIVO, SUPORTE e FINANCEIRO;
+     * métricas de consumo = FINANCEIRO; DESENVOLVIMENTO não acessa nenhum desses.
+     */
     @ParameterizedTest
     @EnumSource(Departamento.class)
-    void funcionarioEntraSoNoModuloDoSeuDepartamento(Departamento dep) throws Exception {
+    void cadaDepartamentoAcessaSoOQueSuasPermissoesLiberam(Departamento dep) throws Exception {
         String email = emailUnico();
         Criado fun = criar(tokenAdmin(), funcionario(email, dep.name()));
-        ativar(fun.matricula(), fun.codigo(), SENHA).andExpect(status().isNoContent());
+        ativar(fun.matricula(), fun.codigo(), SENHA).andExpect(status().isCreated());
 
         String bearer = JsonPath.read(loginPainel(email, SENHA)
                 .andExpect(status().isOk())
@@ -97,12 +90,26 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.expiresIn").value(8 * 3600))
                 .andReturn().getResponse().getContentAsString(), "$.accessToken");
 
-        for (var modulo : MODULO.entrySet()) {
-            acessar(bearer, modulo.getValue())
-                    .andExpect(modulo.getKey() == dep ? status().isNotFound() : status().isForbidden());
-        }
-        acessar(bearer, "/api/v1/app/sonda").andExpect(status().isForbidden());
+        boolean frota = Set.of(ADMINISTRATIVO, SUPORTE, FINANCEIRO).contains(dep);
+        acessar(bearer, USUARIOS).andExpect(okOu403(dep == ADMINISTRATIVO));
+        acessar(bearer, VEICULOS).andExpect(okOu403(frota));
+        acessar(bearer, VEICULOS + "/999999/abastecimentos")
+                .andExpect(frota ? status().isNotFound() : status().isForbidden()); // autorizado, veículo inexistente
+        acessar(bearer, METRICAS).andExpect(okOu403(dep == FINANCEIRO));
+        acessar(bearer, VEICULOS + "/999999/metricas-consumo")
+                .andExpect(dep == FINANCEIRO ? status().isNotFound() : status().isForbidden());
+
         loginApp(fun.matricula(), SENHA).andExpect(status().isUnauthorized()); // funcionário não usa o app
+    }
+
+    @Test
+    void rotaQueNaoExisteEhNegadaPorPadrao() throws Exception {
+        acessar(tokenAdmin(), "/api/v1/qualquer-coisa").andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/qualquer-coisa")).andExpect(status().isUnauthorized());
+    }
+
+    private static ResultMatcher okOu403(boolean permitido) {
+        return permitido ? status().isOk() : status().isForbidden();
     }
 
     // ------------------------------------------------------------------ regras de credencial
@@ -115,7 +122,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.status").value(401))
                 .andExpect(jsonPath("$.erro").value("Unauthorized"))
                 .andExpect(jsonPath("$.caminho").value(USUARIOS));
-        acessar("token.falso.qualquer", "/api/v1/app/sonda")
+        acessar("token.falso.qualquer", VEICULOS)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
     }
@@ -125,15 +132,16 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         String admin = tokenAdmin();
         Criado ent = criar(admin, entregador());
         ativar(ent.matricula(), "ERRADO99", PIN).andExpect(status().isUnauthorized());
-        ativar(ent.matricula(), ent.codigo(), "12345").andExpect(status().isBadRequest());   // curto
-        ativar(ent.matricula(), ent.codigo(), "123456").andExpect(status().isBadRequest());  // sequência
-        ativar(ent.matricula(), ent.codigo(), "777777").andExpect(status().isBadRequest());  // repetido
-        ativar(ent.matricula(), ent.codigo().toLowerCase(), PIN).andExpect(status().isNoContent());
-        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isUnauthorized());     // código é de uso único
+        ativar(ent.matricula(), ent.codigo(), "").andExpect(status().isBadRequest());                  // formato
+        ativar(ent.matricula(), ent.codigo(), "12345").andExpect(status().isUnprocessableContent());   // curto
+        ativar(ent.matricula(), ent.codigo(), "123456").andExpect(status().isUnprocessableContent());  // sequência
+        ativar(ent.matricula(), ent.codigo(), "777777").andExpect(status().isUnprocessableContent());  // repetido
+        ativar(ent.matricula(), ent.codigo().toLowerCase(), PIN).andExpect(status().isCreated());
+        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isUnauthorized());               // uso único
 
         Criado fun = criar(admin, funcionario(emailUnico(), "FINANCEIRO"));
-        ativar(fun.matricula(), fun.codigo(), PIN).andExpect(status().isBadRequest());       // PIN não serve de senha
-        ativar(fun.matricula(), fun.codigo(), "somenteletras").andExpect(status().isBadRequest());
+        ativar(fun.matricula(), fun.codigo(), PIN).andExpect(status().isUnprocessableContent());       // PIN não é senha
+        ativar(fun.matricula(), fun.codigo(), "somenteletras").andExpect(status().isUnprocessableContent());
     }
 
     @Test
@@ -151,7 +159,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
     @Test
     void senhaFicaEmArgon2idComChaveDeSaltDe30Dias() throws Exception {
         Criado ent = criar(tokenAdmin(), entregador());
-        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isNoContent());
+        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isCreated());
 
         String hash = jdbc.queryForObject("select senha_hash from usuario where matricula = ?", String.class, ent.matricula());
         assertThat(hash).startsWith("$argon2id$v=19$m=19456,t=2,p=1$").doesNotContain(PIN);
@@ -180,15 +188,16 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         loginApp(ent.matricula(), PIN)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.codigo").value("CREDENCIAL_EXPIRADA"))
-                .andExpect(jsonPath("$.mensagem").value(containsString("PUT /api/v1/auth/app/credencial")));
+                .andExpect(jsonPath("$.mensagem").value(containsString("PATCH /api/v1/auth/credenciais/")));
         loginApp(ent.matricula(), "000001").andExpect(status().isUnauthorized()); // PIN errado não revela o vencimento
 
-        trocarPin(ent.matricula(), PIN, PIN).andExpect(status().isBadRequest());        // igual ao atual
-        trocarPin(ent.matricula(), "000001", "905318").andExpect(status().isUnauthorized());
-        trocarPin(ent.matricula(), PIN, "905318")
+        trocar(ent.matricula(), PIN, PIN).andExpect(status().isUnprocessableContent()); // igual ao atual
+        trocar(ent.matricula(), "000001", "905318").andExpect(status().isUnauthorized());
+        trocar(ent.matricula(), PIN, "905318")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.credencialExpiraEm").exists());
+                .andExpect(jsonPath("$.matricula").value(ent.matricula()))
+                .andExpect(jsonPath("$.expiraEm").exists())
+                .andExpect(jsonPath("$.accessToken").doesNotExist()); // troca não loga: login é outro recurso
 
         loginApp(ent.matricula(), "905318").andExpect(status().isOk());
         loginApp(ent.matricula(), PIN).andExpect(status().isUnauthorized());
@@ -213,9 +222,12 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
 
         loginPainel(email, SENHA)
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.codigo").value("CREDENCIAL_EXPIRADA"));
-        trocarSenha(email, SENHA, "curta1").andExpect(status().isBadRequest()); // política continua valendo
-        trocarSenha(email, SENHA, "NovaSenhaForte2026").andExpect(status().isOk());
+                .andExpect(jsonPath("$.codigo").value("CREDENCIAL_EXPIRADA"))
+                .andExpect(jsonPath("$.mensagem").value(containsString("PATCH /api/v1/auth/credenciais/" + fun.matricula())));
+        trocar(fun.matricula(), SENHA, "curta1").andExpect(status().isUnprocessableContent()); // política continua valendo
+        trocar(fun.matricula(), SENHA, "NovaSenhaForte2026")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tipoCredencial").value("PAINEL_WEB"));
         loginPainel(email, "NovaSenhaForte2026").andExpect(status().isOk());
     }
 
@@ -224,17 +236,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         Criado ent = criar(tokenAdmin(), entregador());
         ativar(ent.matricula(), ent.codigo(), PIN);
 
-        trocarPin(ent.matricula(), PIN, "905318").andExpect(status().isOk());
+        trocar(ent.matricula(), PIN, "905318").andExpect(status().isOk());
         loginApp(ent.matricula(), "905318").andExpect(status().isOk());
-    }
-
-    private ResultActions trocarPin(String matricula, String atual, String novo) throws Exception {
-        return mvc.perform(put("/api/v1/auth/app/credencial").contentType(MediaType.APPLICATION_JSON).content("""
-                {"matricula":"%s","pinAtual":"%s","novoPin":"%s"}""".formatted(matricula, atual, novo)));
-    }
-
-    private ResultActions trocarSenha(String email, String atual, String nova) throws Exception {
-        return mvc.perform(put("/api/v1/auth/painel/credencial").contentType(MediaType.APPLICATION_JSON).content("""
-                {"email":"%s","senhaAtual":"%s","novaSenha":"%s"}""".formatted(email, atual, nova)));
     }
 }

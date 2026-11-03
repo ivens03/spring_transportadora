@@ -51,8 +51,13 @@ public class OpenApiConfig {
                                    Funcionário: `POST /api/v1/auth/painel/tokens` (e-mail + senha).
                                 2. Copie o `accessToken` e clique em **Authorize**.
 
+                                **Convenções REST**: recursos no plural em `/api/v1`; POST cria (201 + Location),
+                                GET lê (200; listas paginadas `?page&size&sort`), PATCH altera parcialmente (200). Não há PUT.
+                                400 = formato inválido · 401 = sem token · 403 = sem permissão · 404 = não existe ·
+                                409 = conflito · 422 = regra de negócio.
+
                                 Erros sempre no formato `ErroResponse`. Senha/PIN vence a cada 30 dias
-                                (403 com `codigo = CREDENCIAL_EXPIRADA`).""")
+                                (403 com `codigo = CREDENCIAL_EXPIRADA`; troca em `PATCH /api/v1/auth/credenciais/{matricula}`).""")
                         .contact(new Contact().name("Equipe RotaCerta")))
                 .servers(List.of(new Server()
                         .url(contextPath.isBlank() ? "/" : contextPath)
