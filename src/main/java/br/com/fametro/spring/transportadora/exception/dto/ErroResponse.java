@@ -1,6 +1,7 @@
 package br.com.fametro.spring.transportadora.exception.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
@@ -11,6 +12,7 @@ import java.util.List;
  * {@code codigo} só aparece quando o cliente precisa reagir de forma específica (ex.: CREDENCIAL_EXPIRADA).
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
+@Schema(description = "Formato padrão de erro da API")
 public record ErroResponse(Instant timestamp, int status, String erro, String codigo, String mensagem, String caminho,
                            List<CampoErroResponse> campos) {
 

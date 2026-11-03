@@ -2,7 +2,7 @@
 
 Projeto do MBA (Backend 03). Sistema que rastreia entregas em tempo real para uma transportadora de médio porte.
 
-**Stack:** Java 25 · Spring Boot 4.1 · Spring Security 7 (JWT) · Argon2id (Bouncy Castle) · Spring Data JPA · Flyway · PostgreSQL 17 · Testcontainers
+**Stack:** Java 25 · Spring Boot 4.1 · Spring Security 7 (JWT) · Argon2id (Bouncy Castle) · springdoc-openapi (Swagger) · Spring Data JPA · Flyway · PostgreSQL 17 · Testcontainers
 
 ## Arquitetura: por módulo, em camadas dentro de cada um
 
@@ -27,7 +27,7 @@ br.com.fametro.spring.transportadora
 │   ├── model/                   ChaveSalt (seguranca.chave_salt)
 │   ├── repository/              ChaveSaltRepository
 │   └── service/                 CredencialService, Argon2Hasher
-├── config/                      configurações gerais: AppConfig, RotaCertaProperties
+├── config/                      configurações gerais: AppConfig, OpenApiConfig (Swagger), RotaCertaProperties, VariaveisAmbienteObrigatorias
 └── exception/                   tratamento de erro global (vale para todos os módulos)
     ├── custom/                  RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409
     ├── dto/                     ErroResponse, CampoErroResponse
@@ -44,16 +44,32 @@ Pré-requisitos: JDK 25 e Docker.
 
 ```bash
 cp .env.example .env        # preencha os segredos (o .env NÃO vai para o git)
-./mvnw spring-boot:run      # sobe o Postgres do compose.yaml e a API (portas do .env: 5433 e 8085)
+./mvnw spring-boot:run      # perfil dev (padrão): sobe o Postgres do compose.yaml e a API
 ./mvnw test                 # testes com Postgres em container (não precisa do .env)
 ```
+
+### Perfis
+
+| | **dev** (padrão) | **prod** |
+|---|---|---|
+| Ativar | `./mvnw spring-boot:run` | `SPRING_PROFILES_ACTIVE=prod java -jar target/spring.transportadora-*.jar` |
+| Endereço base | `http://localhost:8085/transportadora_dev` | `https://<servidor>/transportadora` |
+| Swagger | `/transportadora_dev/swagger-ui.html` | `/transportadora/swagger-ui.html` (desliga com `SWAGGER_ENABLED=false`) |
+| Segredos | arquivo `.env` | variáveis de ambiente do servidor (não lê `.env`) |
+| Banco | Postgres do `compose.yaml`, sobe sozinho | `POSTGRES_*` do servidor; pool via `DB_POOL_MAX`/`DB_POOL_MIN` |
+| Log | DEBUG + SQL do Hibernate | INFO, sem SQL |
+| Outros | — | desligamento gracioso, `X-Forwarded-*`, compressão, Flyway sem `clean` |
+
+Os endpoints são os mesmos nos dois perfis; muda só o prefixo (`/transportadora_dev` ou `/transportadora`).
+O banner da subida mostra o perfil (verde no dev, vermelho no prod), a URL da API e a do Swagger.
+Se faltar variável obrigatória, a aplicação para logo na subida listando quais faltam.
 
 O `.env` é lido pelo Spring (`spring.config.import=optional:file:.env[.properties]`) e pelo `docker compose`.
 Em servidor, as mesmas chaves podem vir como variáveis de ambiente.
 
 | Variável                                  | Para quê |
 |-------------------------------------------|----------|
-| `SERVER_PORT`                             | porta da API |
+| `SERVER_PORT`                             | porta da API (dev 8085, prod 8080) |
 | `POSTGRES_HOST/PORT/DB/USER/PASSWORD`     | banco (também usadas pelo `compose.yaml`) |
 | `ROTACERTA_JWT_SEGREDO`                   | assinatura HMAC do JWT (≥ 32 bytes) — `openssl rand -base64 48` |
 | `ROTACERTA_PEPPER`                        | pepper do Argon2id (Base64, ≥ 32 bytes) — `openssl rand -base64 32` |
@@ -65,11 +81,11 @@ Fluxo completo em [`docs/fluxo-acesso.mmd`](docs/fluxo-acesso.mmd) (Mermaid).
 
 | Vínculo  | Perfil (departamento) | Credencial       | Login                       | Token | Módulo / rotas                |
 |----------|-----------------------|------------------|-----------------------------|-------|-------------------------------|
-| EXTERNO  | ENTREGADOR            | `APP_ENTREGADOR` | matrícula `ENT-…` + PIN 6 dígitos | 12h | App do Entregador — `/api/app/**` |
-| INTERNO  | ADMINISTRATIVO        | `PAINEL_WEB`     | e-mail + senha              | 8h    | Gestão & Cadastros — `/api/painel/gestao/**` |
-| INTERNO  | SUPORTE               | `PAINEL_WEB`     | e-mail + senha              | 8h    | Operação & Despacho — `/api/painel/operacao/**` |
-| INTERNO  | FINANCEIRO            | `PAINEL_WEB`     | e-mail + senha              | 8h    | Financeiro & Precificação — `/api/painel/financeiro/**` |
-| INTERNO  | DESENVOLVIMENTO       | `PAINEL_WEB`     | e-mail + senha              | 8h    | Monitoramento Técnico — `/api/painel/monitoramento/**` |
+| EXTERNO  | ENTREGADOR            | `APP_ENTREGADOR` | matrícula `ENT-…` + PIN 6 dígitos | 12h | App do Entregador — `/api/v1/app/**` |
+| INTERNO  | ADMINISTRATIVO        | `PAINEL_WEB`     | e-mail + senha              | 8h    | Gestão & Cadastros — `/api/v1/painel/gestao/**` |
+| INTERNO  | SUPORTE               | `PAINEL_WEB`     | e-mail + senha              | 8h    | Operação & Despacho — `/api/v1/painel/operacao/**` |
+| INTERNO  | FINANCEIRO            | `PAINEL_WEB`     | e-mail + senha              | 8h    | Financeiro & Precificação — `/api/v1/painel/financeiro/**` |
+| INTERNO  | DESENVOLVIMENTO       | `PAINEL_WEB`     | e-mail + senha              | 8h    | Monitoramento Técnico — `/api/v1/painel/monitoramento/**` |
 
 Regras:
 
@@ -93,30 +109,41 @@ Tabela `seguranca.chave_salt`: `salt`, `ativa` (marca a chave em uso; as anterio
 
 - Toda ativação ou troca de senha/PIN gera uma **chave de salt nova** e desativa a anterior.
 - Passou de `expira_em`: o login devolve **403** com `"codigo": "CREDENCIAL_EXPIRADA"` (só para quem acertou a senha/PIN).
-  O usuário troca em `POST /api/auth/app/trocar-pin` (entregador) ou `POST /api/auth/painel/trocar-senha` (funcionário),
+  O usuário troca em `PUT /api/v1/auth/app/credencial` (entregador) ou `PUT /api/v1/auth/painel/credencial` (funcionário),
   que já devolvem o token novo. Vale para PIN e senha.
 - O login devolve `credencialExpiraEm`, para o app/painel avisar antes de vencer.
 - A troca também pode ser voluntária, antes dos 30 dias. A nova credencial precisa ser diferente da atual.
 
-### Ciclo de vida da matrícula
+### Endpoints (RESTful, versionados em `/api/v1`)
 
-1. **Administrativo cadastra o usuário** — `POST /api/painel/gestao/usuarios`
-   ```json
-   { "nome": "João", "vinculo": "EXTERNO" }
-   { "nome": "Maria", "email": "maria@empresa.com", "vinculo": "INTERNO", "departamento": "FINANCEIRO" }
-   ```
-   A resposta traz a matrícula e o **código de ativação** (mostrado uma única vez).
-2. **Pessoa ativa** — `POST /api/auth/ativar` `{ "matricula", "codigoAtivacao", "novaCredencial" }` (PIN ou senha).
-3. **Login**
-   - Entregador: `POST /api/auth/app/login` `{ "matricula", "pin" }`
-   - Funcionário: `POST /api/auth/painel/login` `{ "email", "senha" }`
-   - **Troca (obrigatória a cada 30 dias)**: `POST /api/auth/app/trocar-pin` `{ "matricula", "pinAtual", "novoPin" }`
-     e `POST /api/auth/painel/trocar-senha` `{ "email", "senhaAtual", "novaSenha" }`
-4. **Quem sou eu** — `GET /api/auth/me` (perfil, módulo e permissões, para o front montar o menu).
-5. **Manutenção (Administrativo)**
-   - `GET /api/painel/gestao/usuarios` e `GET /api/painel/gestao/usuarios/{matricula}`
-   - `POST /api/painel/gestao/usuarios/{matricula}/codigo-ativacao` — esqueceu PIN/senha, trocou de celular ou desbloqueio
-   - `POST /api/painel/gestao/usuarios/{matricula}/bloqueio`
+Documentação completa e testável no Swagger. Caminhos relativos ao endereço base do perfil.
+
+| Método | Caminho | O que faz | Acesso |
+|---|---|---|---|
+| POST | `/api/v1/auth/app/tokens` | login do entregador (matrícula + PIN) → token | público |
+| POST | `/api/v1/auth/painel/tokens` | login do funcionário (e-mail + senha) → token | público |
+| POST | `/api/v1/auth/ativacoes` | ativa o usuário (código → PIN/senha) — 204 | público |
+| PUT | `/api/v1/auth/app/credencial` | troca o PIN (obrigatório a cada 30 dias) → token novo | público* |
+| PUT | `/api/v1/auth/painel/credencial` | troca a senha (obrigatório a cada 30 dias) → token novo | público* |
+| GET | `/api/v1/auth/sessao` | dados do token atual (perfil, módulo, permissões) | token |
+| POST | `/api/v1/painel/gestao/usuarios` | cadastra usuário — 201 + `Location` + código de ativação | ADMINISTRATIVO |
+| GET | `/api/v1/painel/gestao/usuarios?page=0&size=20&sort=nome,asc` | lista paginada | ADMINISTRATIVO |
+| GET | `/api/v1/painel/gestao/usuarios/{matricula}` | detalhe | ADMINISTRATIVO |
+| POST | `/api/v1/painel/gestao/usuarios/{matricula}/codigos-ativacao` | novo código (esqueceu PIN, trocou de celular, desbloqueio) — 201 | ADMINISTRATIVO |
+| PUT | `/api/v1/painel/gestao/usuarios/{matricula}/bloqueio` | bloqueia — 204, idempotente | ADMINISTRATIVO |
+
+\* público porque quem está com a senha vencida não consegue token; exige a senha/PIN atual.
+
+Exemplos de corpo:
+
+```json
+POST /api/v1/painel/gestao/usuarios
+{ "nome": "João", "vinculo": "EXTERNO" }
+{ "nome": "Maria", "email": "maria@empresa.com", "vinculo": "INTERNO", "departamento": "FINANCEIRO" }
+
+POST /api/v1/auth/ativacoes
+{ "matricula": "ENT-000001", "codigoAtivacao": "R26CWD5F", "novaCredencial": "482917" }
+```
 
 ## Formato de erro
 
@@ -128,7 +155,7 @@ Todo erro (negócio, validação, 401/403 da segurança, rota inexistente ou err
   "status": 400,
   "erro": "Bad Request",
   "mensagem": "Dados inválidos.",
-  "caminho": "/api/painel/gestao/usuarios",
+  "caminho": "/transportadora_dev/api/v1/painel/gestao/usuarios",
   "campos": [ { "campo": "nome", "mensagem": "O nome é obrigatório." } ]
 }
 ```

@@ -9,6 +9,7 @@ import br.com.fametro.spring.transportadora.exception.dto.CampoErroResponse;
 import br.com.fametro.spring.transportadora.exception.dto.ErroResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -77,6 +78,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErroResponse> tipoInvalido(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
         return responder(HttpStatus.BAD_REQUEST, "Parâmetro '" + ex.getName() + "' com valor inválido.", req);
+    }
+
+    /** ?sort= com campo que não existe na entidade. */
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ErroResponse> ordenacaoInvalida(PropertyReferenceException ex, HttpServletRequest req) {
+        return responder(HttpStatus.BAD_REQUEST, "Não é possível ordenar por '" + ex.getPropertyName() + "'.", req);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

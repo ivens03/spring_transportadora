@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>25</java.version>
 		<bouncycastle.version>1.85</bouncycastle.version>
+		<springdoc.version>3.2.0</springdoc.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -59,6 +60,12 @@
 		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<!-- Swagger UI + OpenAPI 3 (versão 3.2.x é a compatível com Spring Boot 4.1) -->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc.version}</version>
 		</dependency>
 		<!-- Argon2id (hash de senha/PIN com salt + pepper) -->
 		<dependency>

@@ -158,7 +158,7 @@ public class AutenticacaoService {
 
     private static String mensagemExpirada(TipoCredencial tipo) {
         return tipo == TipoCredencial.APP_ENTREGADOR
-                ? "Seu PIN venceu (validade de 30 dias). Cadastre um novo em POST /api/auth/app/trocar-pin."
-                : "Sua senha venceu (validade de 30 dias). Cadastre uma nova em POST /api/auth/painel/trocar-senha.";
+                ? "Seu PIN venceu (validade de 30 dias). Cadastre um novo em PUT /api/v1/auth/app/credencial."
+                : "Sua senha venceu (validade de 30 dias). Cadastre uma nova em PUT /api/v1/auth/painel/credencial.";
     }
 }

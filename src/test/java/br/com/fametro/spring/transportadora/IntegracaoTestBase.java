@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 public abstract class IntegracaoTestBase {
 
-    protected static final String USUARIOS = "/api/painel/gestao/usuarios";
+    protected static final String USUARIOS = "/api/v1/painel/gestao/usuarios";
     protected static final String PIN = "482917";
     protected static final String SENHA = "SenhaForte2026";
 
@@ -75,17 +75,17 @@ public abstract class IntegracaoTestBase {
     }
 
     protected ResultActions ativar(String matricula, String codigo, String credencial) throws Exception {
-        return mvc.perform(post("/api/auth/ativar").contentType(MediaType.APPLICATION_JSON).content("""
+        return mvc.perform(post("/api/v1/auth/ativacoes").contentType(MediaType.APPLICATION_JSON).content("""
                 {"matricula":"%s","codigoAtivacao":"%s","novaCredencial":"%s"}""".formatted(matricula, codigo, credencial)));
     }
 
     protected ResultActions loginApp(String matricula, String pin) throws Exception {
-        return mvc.perform(post("/api/auth/app/login").contentType(MediaType.APPLICATION_JSON).content("""
+        return mvc.perform(post("/api/v1/auth/app/tokens").contentType(MediaType.APPLICATION_JSON).content("""
                 {"matricula":"%s","pin":"%s"}""".formatted(matricula, pin)));
     }
 
     protected ResultActions loginPainel(String email, String senha) throws Exception {
-        return mvc.perform(post("/api/auth/painel/login").contentType(MediaType.APPLICATION_JSON).content("""
+        return mvc.perform(post("/api/v1/auth/painel/tokens").contentType(MediaType.APPLICATION_JSON).content("""
                 {"email":"%s","senha":"%s"}""".formatted(email, senha)));
     }
 

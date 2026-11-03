@@ -1,5 +1,6 @@
 package br.com.fametro.spring.transportadora;
 
+import br.com.fametro.spring.transportadora.config.VariaveisAmbienteObrigatorias;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -9,7 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 public class Application {
 
 	public static void main(String[] args) {
-		SpringApplication.run(Application.class, args);
+		SpringApplication app = new SpringApplication(Application.class);
+		app.addListeners(new VariaveisAmbienteObrigatorias());
+		app.run(args);
 	}
 
 }

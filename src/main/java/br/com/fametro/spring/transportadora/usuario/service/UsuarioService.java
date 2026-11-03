@@ -14,13 +14,14 @@ import br.com.fametro.spring.transportadora.usuario.model.enums.Perfil;
 import br.com.fametro.spring.transportadora.usuario.model.enums.Vinculo;
 import br.com.fametro.spring.transportadora.usuario.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
 
 /** Cadastro e manutenção de usuários ("Solicitação de Nova Matrícula" do fluxo de acesso). */
 @Service
@@ -56,8 +57,8 @@ public class UsuarioService {
     }
 
     @Transactional(readOnly = true)
-    public List<UsuarioResponse> listar() {
-        return usuarioRepository.findAllByOrderByMatriculaAsc().stream().map(UsuarioResponse::de).toList();
+    public Page<UsuarioResponse> listar(Pageable pageable) {
+        return usuarioRepository.findAll(pageable).map(UsuarioResponse::de);
     }
 
     @Transactional(readOnly = true)

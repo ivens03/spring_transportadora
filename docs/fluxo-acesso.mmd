@@ -13,7 +13,7 @@ graph TD
     DA --> DC{{Credencial PAINEL_WEB<br/>login: e-mail corporativo + senha<br/>token 8h - expediente}}
 
     %% Fluxo Entregador
-    CC --> E[Módulo: App do Entregador - /api/app]
+    CC --> E[Módulo: App do Entregador - /api/v1/app]
     E --> E1(Ver entregas atribuídas)
     E --> E2(Atualizar status da entrega)
     E --> E3(Sincronizar posição GPS)
@@ -23,26 +23,26 @@ graph TD
     DC --> F{Qual o Departamento?}
 
     %% Administrativo (Foco em Estrutura)
-    F -->|ADMINISTRATIVO| G[Módulo: Gestão & Cadastros Base - /api/painel/gestao]
+    F -->|ADMINISTRATIVO| G[Módulo: Gestão & Cadastros Base - /api/v1/painel/gestao]
     G --> G0(Gerar matrículas, reemitir código, bloquear)
     G --> G1(Cadastrar Motoristas / CNH)
     G --> G2(Cadastrar Veículos e Capacidades)
     G --> G3(Cadastrar Empresas Clientes)
 
     %% Suporte (Foco Operacional e Despacho)
-    F -->|SUPORTE| S[Módulo: Operação Diária & Despacho - /api/painel/operacao]
+    F -->|SUPORTE| S[Módulo: Operação Diária & Despacho - /api/v1/painel/operacao]
     S --> S1(Cadastrar Volumes e Entregas)
     S --> S2(Acompanhar Mapa de Entregas)
     S --> S3(Tratar Atrasos e Dispositivos Offline)
 
     %% Financeiro (Foco Estratégico e Pricing)
-    F -->|FINANCEIRO| H[Módulo: Financeiro & Precificação - /api/painel/financeiro]
+    F -->|FINANCEIRO| H[Módulo: Financeiro & Precificação - /api/v1/painel/financeiro]
     H --> H1(Analisar viabilidade para Frete Grátis)
     H --> H2(Definir margem de desconto por Rota/Trajeto)
     H --> H3(Consultar faturamento e custos da operação)
 
     %% Desenvolvimento
-    F -->|DESENVOLVIMENTO| I[Módulo: Monitoramento Técnico - /api/painel/monitoramento]
+    F -->|DESENVOLVIMENTO| I[Módulo: Monitoramento Técnico - /api/v1/painel/monitoramento]
     I --> I1(Monitoramento de Filas/Mensageria)
     I --> I2(Logs de dispositivos e erros)
 

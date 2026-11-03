@@ -6,9 +6,11 @@ import br.com.fametro.spring.transportadora.usuario.model.enums.Perfil;
 import br.com.fametro.spring.transportadora.usuario.model.enums.StatusUsuario;
 import br.com.fametro.spring.transportadora.usuario.model.enums.TipoCredencial;
 import br.com.fametro.spring.transportadora.usuario.model.enums.Vinculo;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 
+@Schema(description = "Usuário cadastrado")
 public record UsuarioResponse(String matricula, String nome, String email, Vinculo vinculo, Departamento departamento,
                               Perfil perfil, TipoCredencial tipoCredencial, String modulo, StatusUsuario status,
                               Instant ultimoLoginEm, Instant criadoEm) {

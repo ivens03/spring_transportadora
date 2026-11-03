@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -72,16 +73,44 @@ class UsuarioControllerIntegrationTest extends IntegracaoTestBase {
         Criado ent = criar(admin, entregador());
         ativar(ent.matricula(), ent.codigo(), PIN);
 
-        mvc.perform(post(USUARIOS + "/{m}/bloqueio", ent.matricula()).header("Authorization", "Bearer " + admin))
+        mvc.perform(put(USUARIOS + "/{m}/bloqueio", ent.matricula()).header("Authorization", "Bearer " + admin))
                 .andExpect(status().isNoContent());
         loginApp(ent.matricula(), PIN).andExpect(status().isUnauthorized());
 
-        String novoCodigo = JsonPath.read(mvc.perform(post(USUARIOS + "/{m}/codigo-ativacao", ent.matricula())
+        String novoCodigo = JsonPath.read(mvc.perform(post(USUARIOS + "/{m}/codigos-ativacao", ent.matricula())
                         .header("Authorization", "Bearer " + admin))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString(), "$.codigoAtivacao");
         ativar(ent.matricula(), novoCodigo, "905318").andExpect(status().isNoContent());
         loginApp(ent.matricula(), "905318").andExpect(status().isOk());
         loginApp(ent.matricula(), PIN).andExpect(status().isUnauthorized()); // PIN antigo morreu
+    }
+
+    @Test
+    void bloquearEhIdempotente() throws Exception {
+        String admin = tokenAdmin();
+        Criado ent = criar(admin, entregador());
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(put(USUARIOS + "/{m}/bloqueio", ent.matricula()).header("Authorization", "Bearer " + admin))
+                    .andExpect(status().isNoContent());
+        }
+    }
+
+    @Test
+    void listagemEhPaginadaEOrdenavel() throws Exception {
+        String admin = tokenAdmin();
+        criar(admin, entregador());
+        criar(admin, entregador());
+
+        mvc.perform(get(USUARIOS).param("page", "0").param("size", "2").param("sort", "matricula,desc")
+                        .header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.page.size").value(2))
+                .andExpect(jsonPath("$.page.number").value(0))
+                .andExpect(jsonPath("$.page.totalElements").isNumber());
+        mvc.perform(get(USUARIOS).param("sort", "campoQueNaoExiste").header("Authorization", "Bearer " + admin))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensagem").value("Não é possível ordenar por 'campoQueNaoExiste'."));
     }
 }

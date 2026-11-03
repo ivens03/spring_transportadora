@@ -24,13 +24,15 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
 /**
  * Matriz de acesso (ver docs/fluxo-acesso.mmd):
  * <pre>
- * /api/auth/**                 público (login, ativação, troca de PIN/senha) — /api/auth/me exige token
- * /api/app/**                  credencial APP_ENTREGADOR + perfil ENTREGADOR
- * /api/painel/gestao/**        credencial PAINEL_WEB + ADMINISTRATIVO
- * /api/painel/operacao/**      credencial PAINEL_WEB + SUPORTE
- * /api/painel/financeiro/**    credencial PAINEL_WEB + FINANCEIRO
- * /api/painel/monitoramento/** credencial PAINEL_WEB + DESENVOLVIMENTO
+ * /api/v1/auth/**                 público (tokens, ativações, credencial) — /api/v1/auth/sessao exige token
+ * /api/v1/app/**                  credencial APP_ENTREGADOR + perfil ENTREGADOR
+ * /api/v1/painel/gestao/**        credencial PAINEL_WEB + ADMINISTRATIVO
+ * /api/v1/painel/operacao/**      credencial PAINEL_WEB + SUPORTE
+ * /api/v1/painel/financeiro/**    credencial PAINEL_WEB + FINANCEIRO
+ * /api/v1/painel/monitoramento/** credencial PAINEL_WEB + DESENVOLVIMENTO
+ * /swagger-ui.html, /v3/api-docs  público (documentação)
  * </pre>
+ * Os caminhos são relativos ao context path: /transportadora_dev (dev) ou /transportadora (prod).
  * O token do app nunca entra no painel (entregador "sem acesso a painel web") e vice-versa.
  */
 @Configuration
@@ -44,16 +46,21 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable()) // API stateless com Bearer token, sem cookie de sessão
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // públicos: login, ativação e troca de PIN/senha (quem está com a senha vencida não tem token)
                         .requestMatchers(HttpMethod.POST,
-                                "/api/auth/app/login", "/api/auth/painel/login", "/api/auth/ativar",
-                                "/api/auth/app/trocar-pin", "/api/auth/painel/trocar-senha").permitAll()
+                                "/api/v1/auth/app/tokens", "/api/v1/auth/painel/tokens", "/api/v1/auth/ativacoes").permitAll()
+                        .requestMatchers(HttpMethod.PUT,
+                                "/api/v1/auth/app/credencial", "/api/v1/auth/painel/credencial").permitAll()
+                        // documentação (no prod pode ser desligada com SWAGGER_ENABLED=false)
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers("/api/app/**").access(exige(TipoCredencial.APP_ENTREGADOR, Perfil.ENTREGADOR))
-                        .requestMatchers("/api/painel/gestao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.ADMINISTRATIVO))
-                        .requestMatchers("/api/painel/operacao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.SUPORTE))
-                        .requestMatchers("/api/painel/financeiro/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.FINANCEIRO))
-                        .requestMatchers("/api/painel/monitoramento/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.DESENVOLVIMENTO))
-                        .requestMatchers("/api/painel/**").hasAuthority(TipoCredencial.PAINEL_WEB.authority())
+                        // módulos
+                        .requestMatchers("/api/v1/app/**").access(exige(TipoCredencial.APP_ENTREGADOR, Perfil.ENTREGADOR))
+                        .requestMatchers("/api/v1/painel/gestao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.ADMINISTRATIVO))
+                        .requestMatchers("/api/v1/painel/operacao/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.SUPORTE))
+                        .requestMatchers("/api/v1/painel/financeiro/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.FINANCEIRO))
+                        .requestMatchers("/api/v1/painel/monitoramento/**").access(exige(TipoCredencial.PAINEL_WEB, Perfil.DESENVOLVIMENTO))
+                        .requestMatchers("/api/v1/painel/**").hasAuthority(TipoCredencial.PAINEL_WEB.authority())
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(rs -> rs
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))

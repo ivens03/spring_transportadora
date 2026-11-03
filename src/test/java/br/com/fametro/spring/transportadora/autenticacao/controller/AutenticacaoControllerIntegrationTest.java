@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,10 +32,10 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
 
     /** Rota "sonda" de cada módulo do painel: se o perfil pode entrar, cai em 404 (ainda não existe); se não, 403. */
     private static final Map<Departamento, String> MODULO = Map.of(
-            ADMINISTRATIVO, "/api/painel/gestao/sonda",
-            SUPORTE, "/api/painel/operacao/sonda",
-            FINANCEIRO, "/api/painel/financeiro/sonda",
-            DESENVOLVIMENTO, "/api/painel/monitoramento/sonda");
+            ADMINISTRATIVO, "/api/v1/painel/gestao/sonda",
+            SUPORTE, "/api/v1/painel/operacao/sonda",
+            FINANCEIRO, "/api/v1/painel/financeiro/sonda",
+            DESENVOLVIMENTO, "/api/v1/painel/monitoramento/sonda");
 
     // ------------------------------------------------------------------ entregador
 
@@ -49,13 +50,13 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.expiresIn").value(12 * 3600))
                 .andReturn().getResponse().getContentAsString(), "$.accessToken");
 
-        mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + bearer))
+        mvc.perform(get("/api/v1/auth/sessao").header("Authorization", "Bearer " + bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.perfil").value("ENTREGADOR"))
                 .andExpect(jsonPath("$.modulo").value("App do Entregador"))
                 .andExpect(jsonPath("$.permissoes.length()").value(3));
 
-        acessar(bearer, "/api/app/sonda")
+        acessar(bearer, "/api/v1/app/sonda")
                 .andExpect(status().isNotFound()) // autorizado (rota ainda não existe)
                 .andExpect(jsonPath("$.mensagem").value("Rota não encontrada."));
         for (String modulo : MODULO.values()) {
@@ -100,7 +101,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
             acessar(bearer, modulo.getValue())
                     .andExpect(modulo.getKey() == dep ? status().isNotFound() : status().isForbidden());
         }
-        acessar(bearer, "/api/app/sonda").andExpect(status().isForbidden());
+        acessar(bearer, "/api/v1/app/sonda").andExpect(status().isForbidden());
         loginApp(fun.matricula(), SENHA).andExpect(status().isUnauthorized()); // funcionário não usa o app
     }
 
@@ -114,7 +115,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.status").value(401))
                 .andExpect(jsonPath("$.erro").value("Unauthorized"))
                 .andExpect(jsonPath("$.caminho").value(USUARIOS));
-        acessar("token.falso.qualquer", "/api/app/sonda")
+        acessar("token.falso.qualquer", "/api/v1/app/sonda")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
     }
@@ -179,7 +180,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         loginApp(ent.matricula(), PIN)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.codigo").value("CREDENCIAL_EXPIRADA"))
-                .andExpect(jsonPath("$.mensagem").value(containsString("/api/auth/app/trocar-pin")));
+                .andExpect(jsonPath("$.mensagem").value(containsString("PUT /api/v1/auth/app/credencial")));
         loginApp(ent.matricula(), "000001").andExpect(status().isUnauthorized()); // PIN errado não revela o vencimento
 
         trocarPin(ent.matricula(), PIN, PIN).andExpect(status().isBadRequest());        // igual ao atual
@@ -228,12 +229,12 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
     }
 
     private ResultActions trocarPin(String matricula, String atual, String novo) throws Exception {
-        return mvc.perform(post("/api/auth/app/trocar-pin").contentType(MediaType.APPLICATION_JSON).content("""
+        return mvc.perform(put("/api/v1/auth/app/credencial").contentType(MediaType.APPLICATION_JSON).content("""
                 {"matricula":"%s","pinAtual":"%s","novoPin":"%s"}""".formatted(matricula, atual, novo)));
     }
 
     private ResultActions trocarSenha(String email, String atual, String nova) throws Exception {
-        return mvc.perform(post("/api/auth/painel/trocar-senha").contentType(MediaType.APPLICATION_JSON).content("""
+        return mvc.perform(put("/api/v1/auth/painel/credencial").contentType(MediaType.APPLICATION_JSON).content("""
                 {"email":"%s","senhaAtual":"%s","novaSenha":"%s"}""".formatted(email, atual, nova)));
     }
 }
