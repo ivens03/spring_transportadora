@@ -4,6 +4,27 @@ Projeto do MBA (Backend 03). Sistema que rastreia entregas em tempo real para um
 
 **Stack:** Java 25 · Spring Boot 4.1 · Spring Security 7 (JWT) · Spring Data JPA · Flyway · PostgreSQL 17 · Testcontainers
 
+## Arquitetura em camadas
+
+```
+br.com.fametro.spring.transportadora
+├── config/               SecurityConfig, JwtConfig, AppConfig, RotaCertaProperties, AdministradorInicialConfig
+├── controller/           recebe HTTP, valida (@Valid) e delega ao service — sem regra de negócio
+├── dto/
+│   ├── request/          o que a API recebe (UsuarioRequest, LoginAppRequest, ...)
+│   └── response/         o que a API devolve (UsuarioResponse, TokenResponse, ...) — a entidade nunca sai da API
+├── service/              regras de negócio e transações
+├── repository/           acesso ao banco (Spring Data JPA)
+├── model/                entidades JPA
+│   └── enums/            Perfil, Vinculo, Departamento, TipoCredencial, StatusUsuario
+└── exception/
+    ├── custom/           exceções da aplicação (RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409)
+    ├── dto/              ErroResponse e CampoErroResponse (corpo padrão de erro)
+    └── handler/          GlobalExceptionHandler (controllers) e SecurityExceptionHandler (401/403 do Spring Security)
+```
+
+Fluxo de uma requisição: `controller` → `service` → `repository` → `model`; o service devolve DTO de response.
+
 ## Como rodar
 
 Pré-requisitos: JDK 25 e Docker.
@@ -45,7 +66,7 @@ Regras:
 
 ### Ciclo de vida da matrícula
 
-1. **Administrativo cria** — `POST /api/painel/gestao/matriculas`
+1. **Administrativo cadastra o usuário** — `POST /api/painel/gestao/usuarios`
    ```json
    { "nome": "João", "vinculo": "EXTERNO" }
    { "nome": "Maria", "email": "maria@empresa.com", "vinculo": "INTERNO", "departamento": "FINANCEIRO" }
@@ -57,8 +78,23 @@ Regras:
    - Funcionário: `POST /api/auth/painel/login` `{ "email", "senha" }`
 4. **Quem sou eu** — `GET /api/auth/me` (perfil, módulo e permissões, para o front montar o menu).
 5. **Manutenção (Administrativo)**
-   - `GET /api/painel/gestao/matriculas` e `GET /api/painel/gestao/matriculas/{matricula}`
-   - `POST /api/painel/gestao/matriculas/{matricula}/codigo-ativacao` — esqueceu PIN/senha, trocou de celular ou desbloqueio
-   - `POST /api/painel/gestao/matriculas/{matricula}/bloqueio`
+   - `GET /api/painel/gestao/usuarios` e `GET /api/painel/gestao/usuarios/{matricula}`
+   - `POST /api/painel/gestao/usuarios/{matricula}/codigo-ativacao` — esqueceu PIN/senha, trocou de celular ou desbloqueio
+   - `POST /api/painel/gestao/usuarios/{matricula}/bloqueio`
 
-Erros seguem o padrão Problem Details (RFC 9457).
+## Formato de erro
+
+Todo erro (negócio, validação, 401/403 da segurança, rota inexistente ou erro inesperado) volta no mesmo formato:
+
+```json
+{
+  "timestamp": "2026-11-03T18:40:00Z",
+  "status": 400,
+  "erro": "Bad Request",
+  "mensagem": "Dados inválidos.",
+  "caminho": "/api/painel/gestao/usuarios",
+  "campos": [ { "campo": "nome", "mensagem": "O nome é obrigatório." } ]
+}
+```
+
+`campos` só aparece em erro de validação. Erro 500 não expõe stack trace (fica só no log).
