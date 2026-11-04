@@ -36,6 +36,7 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
  * PATCH /api/v1/auth/credenciais/{matricula}                     público (exige a credencial atual)
  * GET   /api/v1/auth/sessao                                       qualquer token válido
  * /api/v1/usuarios/**                                             painel + usuario:gerenciar       (ADMINISTRATIVO)
+ * GET /api/v1/entregadores                                        painel + entrega:cadastrar ou usuario:gerenciar
  * /api/v1/veiculos/{id}/metricas-consumo, /api/v1/metricas-consumo painel + consumo:ver-metricas  (FINANCEIRO)
  * /api/v1/veiculos/{id}/abastecimentos/**                         painel + abastecimento:registrar (ADM, SUPORTE, FINANCEIRO)
  * /api/v1/veiculos/**                                             painel + veiculo:gerenciar      (ADM, SUPORTE, FINANCEIRO)
@@ -72,6 +73,8 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
                         // recursos do painel (a ordem importa: o mais específico primeiro)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/entregadores")
+                                .access(AuthorizationManagers.anyOf(painel(ENTREGA_CADASTRAR), painel(USUARIO_GERENCIAR)))
                         .requestMatchers("/api/v1/usuarios", "/api/v1/usuarios/**").access(painel(USUARIO_GERENCIAR))
                         .requestMatchers(HttpMethod.GET, "/api/v1/metricas-consumo", "/api/v1/veiculos/*/metricas-consumo")
                                 .access(painel(CONSUMO_VER_METRICAS))

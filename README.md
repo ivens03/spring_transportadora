@@ -219,6 +219,7 @@ Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de c
 | GET | `/api/v1/usuarios/{matricula}` | detalhe | `usuario:gerenciar` |
 | PATCH | `/api/v1/usuarios/{matricula}` | altera nome/e-mail ou bloqueia (`{"status":"BLOQUEADO"}`) | `usuario:gerenciar` |
 | POST | `/api/v1/usuarios/{matricula}/codigos-ativacao` | novo código (esqueceu PIN, trocou de celular, desbloqueio) — 201 | `usuario:gerenciar` |
+| GET | `/api/v1/entregadores?status=ATIVO` | entregadores (matrícula, nome, status) para montar a rota | `entrega:cadastrar` ou `usuario:gerenciar` |
 | POST | `/api/v1/veiculos` | cadastra veículo — 201 + `Location` | `veiculo:gerenciar` |
 | GET | `/api/v1/veiculos?status=ATIVO&tipo=VAN` | lista paginada com filtros opcionais | `veiculo:gerenciar` |
 | GET | `/api/v1/veiculos/{id}` | detalhe | `veiculo:gerenciar` |

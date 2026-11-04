@@ -9,6 +9,7 @@ import br.com.fametro.spring.transportadora.seguranca.service.VerificacaoCredenc
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioPatchRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.response.CodigoAtivacaoResponse;
+import br.com.fametro.spring.transportadora.usuario.dto.response.EntregadorResponse;
 import br.com.fametro.spring.transportadora.usuario.dto.response.UsuarioResponse;
 import br.com.fametro.spring.transportadora.usuario.model.Usuario;
 import br.com.fametro.spring.transportadora.usuario.model.enums.Departamento;
@@ -62,6 +63,15 @@ public class UsuarioService {
     @Transactional(readOnly = true)
     public Page<UsuarioResponse> listar(Pageable pageable) {
         return usuarioRepository.findAll(pageable).map(UsuarioResponse::de);
+    }
+
+    /** Entregadores para o Suporte escolher ao montar a rota (status nulo = todos). */
+    @Transactional(readOnly = true)
+    public Page<EntregadorResponse> listarEntregadores(StatusUsuario status, Pageable pageable) {
+        Page<Usuario> pagina = status == null
+                ? usuarioRepository.findByPerfil(Perfil.ENTREGADOR, pageable)
+                : usuarioRepository.findByPerfilAndStatus(Perfil.ENTREGADOR, status, pageable);
+        return pagina.map(EntregadorResponse::de);
     }
 
     @Transactional(readOnly = true)
