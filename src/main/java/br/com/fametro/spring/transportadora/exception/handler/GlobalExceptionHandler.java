@@ -60,6 +60,13 @@ public class GlobalExceptionHandler {
 
     // ---------- exceções do Spring
 
+    /** Corrida entre duas requisições batendo num índice único (ex.: duas rotas para o mesmo veículo). */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErroResponse> integridade(org.springframework.dao.DataIntegrityViolationException ex,
+                                                    HttpServletRequest req) {
+        return responder(HttpStatus.CONFLICT, "Conflito com outro registro (já em uso ou duplicado). Tente de novo.", req);
+    }
+
     /** @Valid falhou: devolve a lista de campos com a mensagem de cada um. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErroResponse> validacao(MethodArgumentNotValidException ex, HttpServletRequest req) {

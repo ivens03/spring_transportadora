@@ -34,6 +34,8 @@ public abstract class IntegracaoTestBase {
     protected static final String USUARIOS = "/api/v1/usuarios";
     protected static final String VEICULOS = "/api/v1/veiculos";
     protected static final String METRICAS = "/api/v1/metricas-consumo";
+    protected static final String CARGAS = "/api/v1/cargas";
+    protected static final String ROTAS = "/api/v1/rotas";
     protected static final String PIN = "482917";
     protected static final String SENHA = "SenhaForte2026";
 
@@ -159,6 +161,35 @@ public abstract class IntegracaoTestBase {
         return enviar(post(VEICULOS + "/{id}/abastecimentos", veiculoId), token, """
                 {"dataHora":"%s","odometroKm":%d,"litros":%s,"valorTotal":%s,"combustivel":"%s","posto":"Posto Teste"}"""
                 .formatted(dataHora, odometro, litros, valor, combustivel));
+    }
+
+    protected record EntregadorTeste(String matricula, String token) {
+    }
+
+    /** Entregador cadastrado, ativado com PIN e logado no app. */
+    protected EntregadorTeste entregadorAtivo() throws Exception {
+        Criado ent = criar(tokenAdmin(), entregador());
+        ativar(ent.matricula(), ent.codigo(), PIN).andExpect(status().isCreated());
+        String token = JsonPath.read(loginApp(ent.matricula(), PIN)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(), "$.accessToken");
+        return new EntregadorTeste(ent.matricula(), token);
+    }
+
+    /** JSON de carga em Fortaleza/CE. */
+    protected static String carga(String bairro, String latitude, String longitude, String pesoKg) {
+        return """
+                {"descricao":"Caixa teste","pesoKg":%s,"volumeM3":0.05,"destinatarioNome":"Cliente Teste",
+                 "destinatarioTelefone":"85999990000","endereco":"Rua Teste, 100","bairro":"%s","cidade":"Fortaleza",
+                 "uf":"ce","cep":"60150160","latitude":%s,"longitude":%s}"""
+                .formatted(pesoKg, bairro, latitude, longitude);
+    }
+
+    protected long cadastrarCarga(String token, String json) throws Exception {
+        Number id = JsonPath.read(enviar(post(CARGAS), token, json)
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        return id.longValue();
     }
 
     protected static String emailUnico() {

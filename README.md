@@ -114,9 +114,13 @@ Toda rota não liberada explicitamente é **negada** (deny by default: 403 com t
 | `veiculo:gerenciar` | ADMINISTRATIVO, SUPORTE, FINANCEIRO | `/api/v1/veiculos` (cadastro e manutenção da frota) |
 | `abastecimento:registrar` | ADMINISTRATIVO, SUPORTE, FINANCEIRO | `/api/v1/veiculos/{id}/abastecimentos/**` |
 | `consumo:ver-metricas` | FINANCEIRO | `/api/v1/metricas-consumo` e `/api/v1/veiculos/{id}/metricas-consumo` |
-| `entrega:*`, `posicao:sincronizar` | ENTREGADOR | app do entregador (próximos módulos) |
+| `entrega:cadastrar` | SUPORTE | `/api/v1/cargas/**`, gerar (`POST`) e cancelar (`PATCH`) rotas |
+| `mapa:acompanhar` | SUPORTE | ver rotas e o rastro de GPS (`GET /api/v1/rotas/**`) |
+| `entrega:ver-atribuidas` | ENTREGADOR | ver as **próprias** rotas (`GET /api/v1/rotas/**`; as dos outros dão 404) |
+| `entrega:atualizar-status` | ENTREGADOR | iniciar a rota e baixar paradas (`PATCH`) |
+| `posicao:sincronizar` | ENTREGADOR | enviar GPS (`POST /api/v1/rotas/{id}/posicoes`) |
 | `motorista:cadastrar`, `cliente:cadastrar` | ADMINISTRATIVO | próximos módulos |
-| `entrega:cadastrar`, `mapa:acompanhar`, `ocorrencia:tratar` | SUPORTE | próximos módulos |
+| `ocorrencia:tratar` | SUPORTE | próximos módulos |
 | `frete:*`, `desconto:*`, `faturamento:consultar` | FINANCEIRO | próximos módulos |
 | `mensageria:monitorar`, `dispositivo:consultar-logs` | DESENVOLVIMENTO | próximos módulos |
 
@@ -171,6 +175,29 @@ Métricas (método do tanque cheio; período em datas inclusivas no fuso `Americ
 A visão da frota soma os km e litros só dos veículos com km/l calculado e conta quantos estão acima do esperado.
 A tolerância (`rotacerta.frota.tolerancia-consumo-percentual`) e o fuso ficam no `application.properties`.
 
+## Roteirização: cargas → rota → execução no app
+
+1. **SUPORTE cadastra as cargas** com endereço **e coordenadas** (o front obtém pelo mapa/geocodificação).
+2. **SUPORTE escolhe o que vai junto**: filtra `GET /api/v1/cargas?status=AGUARDANDO_ROTA&cidade=…&bairro=…`
+   e chama `POST /api/v1/rotas` com as cargas, o veículo e o entregador. O sistema confere:
+   veículo ATIVO e sem outra rota ativa, entregador ATIVO e sem outra rota ativa, cargas AGUARDANDO_ROTA,
+   **peso e volume dentro da capacidade** do veículo.
+3. **O sistema gera a rota** (PLANEJADA): ordem das paradas por *vizinho mais próximo + 2-opt*, saindo do
+   depósito (`rotacerta.rota.origem`) ou da origem informada, voltando ou não (`retornarAOrigem`, padrão sim).
+   Distância = linha reta (Haversine) × fator viário 1,3; duração = distância / 25 km/h + 5 min por parada.
+   É estimativa: o desenho das ruas fica com o provedor de mapas do front.
+4. **O entregador inicia no app**: `PATCH /api/v1/rotas/{id}` `{"status":"EM_ANDAMENTO"}`. A resposta já é a tela:
+   paradas em ordem, `trajeto` (origem → paradas → retorno), `proximaParada`, distância e minutos até ela.
+5. **Durante a rota** o app envia o GPS em lote (`POST …/posicoes`, até 500 leituras; reenvio não duplica) e baixa
+   cada parada (`PATCH …/paradas/{ordem}`: `ENTREGUE` ou `NAO_ENTREGUE` + motivo; reenvio é inofensivo).
+   O Suporte acompanha em `GET /api/v1/rotas/{id}` e no rastro `GET …/posicoes?desde=…` (só o que chegou de novo).
+6. **Na última baixa a rota vira CONCLUIDA** sozinha: entregues ficam `ENTREGUE`; não entregues voltam para
+   `AGUARDANDO_ROTA` com `tentativasEntrega + 1`. Cancelar (`CANCELADA`, Suporte) só antes de sair.
+
+| Carga | Rota | Parada |
+|---|---|---|
+| AGUARDANDO_ROTA → ROTEIRIZADA → EM_TRANSITO → ENTREGUE (ou volta a AGUARDANDO_ROTA); CANCELADA | PLANEJADA → EM_ANDAMENTO → CONCLUIDA; PLANEJADA → CANCELADA | PENDENTE → ENTREGUE / NAO_ENTREGUE |
+
 ## Endpoints (RESTful, versionados em `/api/v1`)
 
 Documentação completa e testável no Swagger. Caminhos relativos ao endereço base do perfil.
@@ -201,6 +228,17 @@ Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de c
 | GET | `/api/v1/veiculos/{id}/abastecimentos/{abastecimentoId}` | detalhe | `abastecimento:registrar` |
 | GET | `/api/v1/veiculos/{id}/metricas-consumo?inicio=2026-10-01&fim=2026-10-31` | métricas de um veículo | `consumo:ver-metricas` |
 | GET | `/api/v1/metricas-consumo?inicio=2026-10-01&fim=2026-10-31` | totais da frota + um item por veículo | `consumo:ver-metricas` |
+| POST | `/api/v1/cargas` | cadastra carga — 201 + `Location` | `entrega:cadastrar` |
+| GET | `/api/v1/cargas?status=AGUARDANDO_ROTA&cidade=Fortaleza&bairro=Aldeota` | escolher as cargas de um destino | `entrega:cadastrar` |
+| GET | `/api/v1/cargas/{id}` | detalhe | `entrega:cadastrar` |
+| PATCH | `/api/v1/cargas/{id}` | altera dados/destino ou cancela (só AGUARDANDO_ROTA) | `entrega:cadastrar` |
+| POST | `/api/v1/rotas` | gera a rota otimizada — 201 + `Location` | `entrega:cadastrar` |
+| GET | `/api/v1/rotas?status=EM_ANDAMENTO` | lista (painel: todas; app: só as do entregador) | `mapa:acompanhar` / `entrega:ver-atribuidas` |
+| GET | `/api/v1/rotas/{id}` | rota completa (paradas, trajeto, progresso, próxima parada, última posição) | `mapa:acompanhar` / `entrega:ver-atribuidas` |
+| PATCH | `/api/v1/rotas/{id}` | `EM_ANDAMENTO` (app inicia) / `CANCELADA` (Suporte, antes de sair) | `entrega:atualizar-status` / `entrega:cadastrar` |
+| PATCH | `/api/v1/rotas/{id}/paradas/{ordem}` | baixa a parada | `entrega:atualizar-status` (app) |
+| POST | `/api/v1/rotas/{id}/posicoes` | lote de GPS — 201 | `posicao:sincronizar` (app) |
+| GET | `/api/v1/rotas/{id}/posicoes?desde=2026-11-04T12:00:00Z` | rastro percorrido | `mapa:acompanhar` / `entrega:ver-atribuidas` |
 
 \* público porque quem está com a senha vencida não consegue token; exige a senha/PIN atual.
 
@@ -221,6 +259,19 @@ POST /api/v1/veiculos
 { "placa": "RIO2A18", "marca": "Fiat", "modelo": "Fiorino", "anoFabricacao": 2023, "tipo": "UTILITARIO",
   "combustivel": "FLEX", "capacidadeCargaKg": 650, "capacidadeVolumeM3": 3.1,
   "consumoReferenciaKmPorLitro": 11.5, "quilometragemAtual": 15230 }
+
+POST /api/v1/cargas
+{ "descricao": "Caixa de eletrônicos", "pesoKg": 12.5, "volumeM3": 0.08, "destinatarioNome": "Ana Ribeiro",
+  "endereco": "Av. Santos Dumont, 1500", "bairro": "Aldeota", "cidade": "Fortaleza", "uf": "CE",
+  "latitude": -3.7374, "longitude": -38.4977 }
+
+POST /api/v1/rotas
+{ "veiculoId": 1, "entregadorMatricula": "ENT-000001", "cargaIds": [1, 2, 3] }
+
+PATCH /api/v1/rotas/1                 (app)  { "status": "EM_ANDAMENTO" }
+POST  /api/v1/rotas/1/posicoes        (app)  { "posicoes": [ { "latitude": -3.733, "longitude": -38.515,
+                                                "registradaEm": "2026-11-04T09:15:30-03:00", "velocidadeKmH": 32.5 } ] }
+PATCH /api/v1/rotas/1/paradas/2       (app)  { "status": "NAO_ENTREGUE", "motivo": "Destinatário ausente" }
 
 POST /api/v1/veiculos/1/abastecimentos
 { "dataHora": "2026-11-03T08:15:00-03:00", "odometroKm": 15642, "litros": 38.42,

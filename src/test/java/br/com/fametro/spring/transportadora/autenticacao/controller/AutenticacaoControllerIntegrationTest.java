@@ -48,9 +48,10 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.perfil").value("ENTREGADOR"))
                 .andExpect(jsonPath("$.permissoes.length()").value(3));
 
-        for (String recurso : new String[]{USUARIOS, VEICULOS, METRICAS}) {
+        for (String recurso : new String[]{USUARIOS, VEICULOS, METRICAS, CARGAS}) {
             acessar(bearer, recurso).andExpect(status().isForbidden()); // token do app não abre o painel
         }
+        acessar(bearer, ROTAS).andExpect(status().isOk()); // as rotas dele (app)
         acessar(bearer, USUARIOS)
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.caminho").value(USUARIOS))
@@ -74,7 +75,7 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
     /**
      * Quem acessa o quê (deny by default):
      * usuários = ADMINISTRATIVO; veículos e abastecimentos = ADMINISTRATIVO, SUPORTE e FINANCEIRO;
-     * métricas de consumo = FINANCEIRO; DESENVOLVIMENTO não acessa nenhum desses.
+     * métricas de consumo = FINANCEIRO; cargas e rotas = SUPORTE; DESENVOLVIMENTO não acessa nenhum desses.
      */
     @ParameterizedTest
     @EnumSource(Departamento.class)
@@ -98,6 +99,8 @@ class AutenticacaoControllerIntegrationTest extends IntegracaoTestBase {
         acessar(bearer, METRICAS).andExpect(okOu403(dep == FINANCEIRO));
         acessar(bearer, VEICULOS + "/999999/metricas-consumo")
                 .andExpect(dep == FINANCEIRO ? status().isNotFound() : status().isForbidden());
+        acessar(bearer, CARGAS).andExpect(okOu403(dep == SUPORTE));
+        acessar(bearer, ROTAS).andExpect(okOu403(dep == SUPORTE));
 
         loginApp(fun.matricula(), SENHA).andExpect(status().isUnauthorized()); // funcionário não usa o app
     }

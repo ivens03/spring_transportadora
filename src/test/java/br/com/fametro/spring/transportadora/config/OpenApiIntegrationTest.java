@@ -37,7 +37,15 @@ class OpenApiIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.paths['/api/v1/veiculos/{veiculoId}/abastecimentos'].post").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/veiculos/{veiculoId}/abastecimentos/{id}'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/veiculos/{veiculoId}/metricas-consumo'].get").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/metricas-consumo'].get").exists());
+                .andExpect(jsonPath("$.paths['/api/v1/metricas-consumo'].get").exists())
+                // cargas e rotas
+                .andExpect(jsonPath("$.paths['/api/v1/cargas'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/cargas/{id}'].patch").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/rotas'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/rotas/{id}'].patch").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/rotas/{id}/paradas/{ordem}'].patch").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/rotas/{rotaId}/posicoes'].post").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/rotas/{rotaId}/posicoes'].get").exists());
     }
 
     @Test

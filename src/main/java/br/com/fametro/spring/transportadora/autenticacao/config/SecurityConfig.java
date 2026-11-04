@@ -19,6 +19,11 @@ import org.springframework.security.web.access.intercept.RequestAuthorizationCon
 
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ABASTECIMENTO_REGISTRAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.CONSUMO_VER_METRICAS;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_ATUALIZAR_STATUS;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_CADASTRAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_VER_ATRIBUIDAS;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.MAPA_ACOMPANHAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.POSICAO_SINCRONIZAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.USUARIO_GERENCIAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.VEICULO_GERENCIAR;
 import static org.springframework.security.authorization.AuthorityAuthorizationManager.hasAuthority;
@@ -34,6 +39,13 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
  * /api/v1/veiculos/{id}/metricas-consumo, /api/v1/metricas-consumo painel + consumo:ver-metricas  (FINANCEIRO)
  * /api/v1/veiculos/{id}/abastecimentos/**                         painel + abastecimento:registrar (ADM, SUPORTE, FINANCEIRO)
  * /api/v1/veiculos/**                                             painel + veiculo:gerenciar      (ADM, SUPORTE, FINANCEIRO)
+ * /api/v1/cargas/**                                               painel + entrega:cadastrar      (SUPORTE)
+ * POST  /api/v1/rotas                                             painel + entrega:cadastrar      (SUPORTE)
+ * GET   /api/v1/rotas, /rotas/{id}, /rotas/{id}/posicoes          painel + mapa:acompanhar OU app + entrega:ver-atribuidas
+ * PATCH /api/v1/rotas/{id}                                        painel + entrega:cadastrar OU app + entrega:atualizar-status
+ * PATCH /api/v1/rotas/{id}/paradas/{ordem}                        app + entrega:atualizar-status  (ENTREGADOR)
+ * POST  /api/v1/rotas/{id}/posicoes                               app + posicao:sincronizar       (ENTREGADOR)
+ *   (o entregador só enxerga as próprias rotas: as dos outros respondem 404)
  * /swagger-ui.html, /v3/api-docs                                  público (documentação)
  * qualquer outra rota                                             negada
  * </pre>
@@ -66,6 +78,15 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/veiculos/*/abastecimentos", "/api/v1/veiculos/*/abastecimentos/**")
                                 .access(painel(ABASTECIMENTO_REGISTRAR))
                         .requestMatchers("/api/v1/veiculos", "/api/v1/veiculos/**").access(painel(VEICULO_GERENCIAR))
+                        .requestMatchers("/api/v1/cargas", "/api/v1/cargas/**").access(painel(ENTREGA_CADASTRAR))
+                        // rotas: o mesmo recurso atende o painel (Suporte) e o app (entregador)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/rotas").access(painel(ENTREGA_CADASTRAR))
+                        .requestMatchers(HttpMethod.GET, "/api/v1/rotas", "/api/v1/rotas/*", "/api/v1/rotas/*/posicoes")
+                                .access(AuthorizationManagers.anyOf(painel(MAPA_ACOMPANHAR), app(ENTREGA_VER_ATRIBUIDAS)))
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/rotas/*")
+                                .access(AuthorizationManagers.anyOf(painel(ENTREGA_CADASTRAR), app(ENTREGA_ATUALIZAR_STATUS)))
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/rotas/*/paradas/*").access(app(ENTREGA_ATUALIZAR_STATUS))
+                        .requestMatchers(HttpMethod.POST, "/api/v1/rotas/*/posicoes").access(app(POSICAO_SINCRONIZAR))
                         // negado por padrão
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(rs -> rs
@@ -81,6 +102,11 @@ public class SecurityConfig {
     /** Token do painel web E a permissão pedida. */
     private static AuthorizationManager<RequestAuthorizationContext> painel(String permissao) {
         return AuthorizationManagers.allOf(hasAuthority(TipoCredencial.PAINEL_WEB.authority()), hasAuthority(permissao));
+    }
+
+    /** Token do app do entregador E a permissão pedida. */
+    private static AuthorizationManager<RequestAuthorizationContext> app(String permissao) {
+        return AuthorizationManagers.allOf(hasAuthority(TipoCredencial.APP_ENTREGADOR.authority()), hasAuthority(permissao));
     }
 
     @Bean

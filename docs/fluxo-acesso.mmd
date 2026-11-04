@@ -14,9 +14,9 @@ graph TD
 
     %% Fluxo Entregador
     CC --> E[App do Entregador]
-    E --> E1(Ver entregas atribuídas)
-    E --> E2(Atualizar status da entrega)
-    E --> E3(Sincronizar posição GPS)
+    E --> E1(Ver as próprias rotas - GET /api/v1/rotas)
+    E --> E2(Iniciar rota e baixar paradas - PATCH)
+    E --> E3(Enviar GPS em lote - POST /rotas/id/posicoes)
     E -.-> E4>Sem acesso a painel web - token do app recebe 403 no painel]
 
     %% Fluxo Funcionário e Subdivisões
@@ -31,8 +31,11 @@ graph TD
 
     %% Suporte (Foco Operacional e Despacho)
     F -->|SUPORTE| S[Operação Diária & Despacho]
-    S --> S1(Cadastrar Volumes e Entregas)
-    S --> S2(Acompanhar Mapa de Entregas)
+    S --> S1(Cadastrar cargas - /api/v1/cargas)
+    S --> S4(Escolher cargas + veículo + entregador e gerar rota otimizada - POST /api/v1/rotas)
+    S --> S2(Acompanhar mapa: rota, última posição e rastro)
+    S4 -.->|rota PLANEJADA aparece no app| E1
+    E3 -.->|rastro| S2
     S --> S3(Tratar Atrasos e Dispositivos Offline)
     S --> FROTA
 
@@ -74,4 +77,4 @@ graph TD
     class CA,DA,CC,DC credencial;
     classDef frota fill:#6f42c1,stroke:#4e2a8e,stroke-width:2px,color:#fff;
     class FROTA frota;
-    class E1,E2,E3,G0,G1,G3,S1,S2,S3,H1,H2,H3,H4,V1,V2,I1,I2 permissao;
+    class E1,E2,E3,G0,G1,G3,S1,S2,S3,S4,H1,H2,H3,H4,V1,V2,I1,I2 permissao;
