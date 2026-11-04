@@ -45,7 +45,17 @@ class OpenApiIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.paths['/api/v1/rotas/{id}'].patch").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/rotas/{id}/paradas/{ordem}'].patch").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/rotas/{rotaId}/posicoes'].post").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/rotas/{rotaId}/posicoes'].get").exists());
+                .andExpect(jsonPath("$.paths['/api/v1/rotas/{rotaId}/posicoes'].get").exists())
+                // portal do cliente
+                .andExpect(jsonPath("$.paths['/api/v1/clientes'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/encomendas'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/encomendas/{codigo}'].get.responses['404']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/webhooks'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/webhooks/{id}'].patch").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/webhooks/{id}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/webhooks/{id}/segredos'].post").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/webhooks/{id}/pings'].post.responses['202']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/webhooks/{id}/entregas'].get").exists());
     }
 
     @Test

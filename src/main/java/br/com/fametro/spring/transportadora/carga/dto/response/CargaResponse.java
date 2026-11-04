@@ -11,13 +11,15 @@ import java.time.Instant;
 public record CargaResponse(Long id, String codigo, String descricao, BigDecimal pesoKg, BigDecimal volumeM3,
                             String destinatarioNome, String destinatarioTelefone, String endereco, String bairro,
                             String cidade, String uf, String cep, BigDecimal latitude, BigDecimal longitude,
-                            StatusCarga status, int tentativasEntrega, String cadastradaPor,
-                            Instant criadaEm, Instant atualizadaEm) {
+                            StatusCarga status, int tentativasEntrega, String clienteMatricula, String clienteNome,
+                            String cadastradaPor, Instant criadaEm, Instant atualizadaEm) {
 
     public static CargaResponse de(Carga c) {
         return new CargaResponse(c.getId(), c.getCodigo(), c.getDescricao(), c.getPesoKg(), c.getVolumeM3(),
                 c.getDestinatarioNome(), c.getDestinatarioTelefone(), c.getEndereco(), c.getBairro(), c.getCidade(),
                 c.getUf(), c.getCep(), c.getLatitude(), c.getLongitude(), c.getStatus(), c.getTentativasEntrega(),
+                c.getCliente() == null ? null : c.getCliente().getMatricula(),
+                c.getCliente() == null ? null : c.getCliente().getNome(),
                 c.getCadastradaPor(), c.getCriadaEm(), c.getAtualizadaEm());
     }
 }

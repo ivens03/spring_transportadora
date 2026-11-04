@@ -24,7 +24,10 @@ import br.com.fametro.spring.transportadora.usuario.repository.UsuarioRepository
 import br.com.fametro.spring.transportadora.veiculo.model.Veiculo;
 import br.com.fametro.spring.transportadora.veiculo.model.enums.StatusVeiculo;
 import br.com.fametro.spring.transportadora.veiculo.repository.VeiculoRepository;
+import br.com.fametro.spring.transportadora.encomenda.evento.EncomendaAlterada;
+import br.com.fametro.spring.transportadora.encomenda.model.enums.TipoEventoEncomenda;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -42,6 +45,7 @@ import java.util.Set;
 /**
  * Roteirização: o SUPORTE escolhe cargas + veículo + entregador e o sistema gera a rota otimizada;
  * o entregador inicia a rota no app e baixa as paradas; a rota conclui sozinha na última baixa.
+ * Cada mudança que o cliente precisa saber publica {@link EncomendaAlterada} (linha do tempo + webhook).
  */
 @Service
 @RequiredArgsConstructor
@@ -55,6 +59,7 @@ public class RotaService {
     private final UsuarioRepository usuarioRepository;
     private final RotaMapper rotaMapper;
     private final RotaProperties props;
+    private final ApplicationEventPublisher eventos;
     private final Clock clock;
 
     @Transactional
@@ -133,7 +138,9 @@ public class RotaService {
             rota.adicionarParada(carga, i + 1, RotaMapper.km(plano.distanciasKm().get(i) * props.fatorDistanciaViaria()));
             carga.roteirizar(agora);
         }
-        return rotaMapper.completa(rotaRepository.save(rota));
+        Rota salva = rotaRepository.save(rota); // salva antes de avisar: o rastreio do aviso já enxerga a rota nova
+        salva.getParadas().forEach(p -> avisar(p.getCarga(), TipoEventoEncomenda.ROTEIRIZADA, salva, null, agora));
+        return rotaMapper.completa(salva);
     }
 
     @Transactional(readOnly = true)
@@ -161,12 +168,15 @@ public class RotaService {
                     throw new RegraNegocioException("Só o entregador inicia a rota (pelo app).");
                 }
                 rota.iniciar(agora);
+                rota.getParadas().forEach(p -> avisar(p.getCarga(), TipoEventoEncomenda.SAIU_PARA_ENTREGA, rota, null, agora));
             }
             case CANCELADA -> {
                 if (quem.entregador()) {
                     throw new RegraNegocioException("O entregador não cancela rota: fale com o Suporte.");
                 }
                 rota.cancelar(agora);
+                rota.getParadas().forEach(p -> avisar(p.getCarga(), TipoEventoEncomenda.AGUARDANDO_NOVA_ROTA, rota,
+                        "Rota cancelada antes de sair do depósito.", agora));
             }
             default -> throw new RegraNegocioException("status aceita EM_ANDAMENTO (iniciar) ou CANCELADA; "
                     + "CONCLUIDA é automática quando a última parada é baixada.");
@@ -198,7 +208,19 @@ public class RotaService {
             throw new RegraNegocioException("finalizadaEm está no futuro.");
         }
         rota.baixarParada(parada, req.status(), motivo, quando, agora);
+        avisar(parada.getCarga(), req.status() == StatusParada.ENTREGUE
+                ? TipoEventoEncomenda.ENTREGUE : TipoEventoEncomenda.NAO_ENTREGUE, rota, motivo, quando);
+        if (rota.getStatus() == StatusRota.CONCLUIDA) {
+            // o que não foi entregue volta com o veículo e espera outra rota
+            rota.getParadas().stream().filter(p -> p.getStatus() == StatusParada.NAO_ENTREGUE)
+                    .forEach(p -> avisar(p.getCarga(), TipoEventoEncomenda.AGUARDANDO_NOVA_ROTA, rota,
+                            "Voltou ao depósito com o veículo.", agora));
+        }
         return rotaMapper.completa(rota);
+    }
+
+    private void avisar(Carga carga, TipoEventoEncomenda tipo, Rota rota, String detalhe, Instant quando) {
+        eventos.publishEvent(new EncomendaAlterada(carga, tipo, rota.getCodigo(), detalhe, quando));
     }
 
     /** Rota de outro entregador responde 404 (não revela que existe). */

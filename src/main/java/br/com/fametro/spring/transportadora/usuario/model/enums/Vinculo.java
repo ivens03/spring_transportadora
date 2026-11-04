@@ -5,5 +5,7 @@ public enum Vinculo {
     /** Operação externa: entregador, usa somente o app. */
     EXTERNO,
     /** Operação interna: funcionário, usa somente o painel web. */
-    INTERNO
+    INTERNO,
+    /** Cliente da transportadora (empresa que despacha encomendas): usa somente o Portal do Cliente. */
+    CLIENTE
 }

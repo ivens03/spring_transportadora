@@ -29,6 +29,9 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     @Query(value = "select nextval('seq_matricula_entregador')", nativeQuery = true)
     long proximoNumeroMatriculaEntregador();
 
+    @Query(value = "select nextval('seq_matricula_cliente')", nativeQuery = true)
+    long proximoNumeroMatriculaCliente();
+
     @Query(value = "select nextval('seq_matricula_funcionario')", nativeQuery = true)
     long proximoNumeroMatriculaFuncionario();
 }

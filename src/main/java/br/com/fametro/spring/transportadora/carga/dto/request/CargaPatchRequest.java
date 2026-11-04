@@ -13,7 +13,8 @@ import java.math.BigDecimal;
 /** PATCH: só os campos enviados mudam; só vale enquanto a carga está AGUARDANDO_ROTA. Endereço muda em bloco. */
 @Schema(description = """
         Atualização parcial da carga (só enquanto AGUARDANDO_ROTA). Para mudar o destino envie endereco, bairro,
-        cidade, uf, latitude e longitude juntos (cep opcional). status aceita apenas CANCELADA.""")
+        cidade, uf, latitude e longitude juntos (cep opcional). status aceita apenas CANCELADA.
+        clienteMatricula troca o dono da encomenda; vazio ("") remove o vínculo.""")
 public record CargaPatchRequest(
         @Size(max = 200, message = "A descrição tem no máximo 200 caracteres.") String descricao,
         @DecimalMin(value = "0.01", message = "O peso deve ser maior que zero.")
@@ -31,11 +32,13 @@ public record CargaPatchRequest(
         @Digits(integer = 2, fraction = 6, message = "Latitude com até 6 casas decimais.") BigDecimal latitude,
         @DecimalMin(value = "-180", message = "Longitude inválida.") @DecimalMax(value = "180", message = "Longitude inválida.")
         @Digits(integer = 3, fraction = 6, message = "Longitude com até 6 casas decimais.") BigDecimal longitude,
-        @Schema(description = "Somente CANCELADA", example = "CANCELADA") StatusCarga status) {
+        @Schema(description = "Somente CANCELADA", example = "CANCELADA") StatusCarga status,
+        @Schema(description = "Cliente dono da encomenda; \"\" remove", example = "CLI-000001")
+        @Size(max = 20, message = "Matrícula do cliente inválida.") String clienteMatricula) {
 
     public boolean vazio() {
         return descricao == null && pesoKg == null && volumeM3 == null && destinatarioNome == null
-                && destinatarioTelefone == null && !mexeNoEndereco() && status == null;
+                && destinatarioTelefone == null && !mexeNoEndereco() && status == null && clienteMatricula == null;
     }
 
     public boolean mexeNoEndereco() {

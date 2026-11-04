@@ -19,6 +19,10 @@ public enum Perfil {
     ENTREGADOR(Vinculo.EXTERNO, TipoCredencial.APP_ENTREGADOR, "ENT", "App do Entregador",
             List.of(ENTREGA_VER_ATRIBUIDAS, ENTREGA_ATUALIZAR_STATUS, POSICAO_SINCRONIZAR)),
 
+    /** Entra como o painel (e-mail + senha), mas só enxerga as próprias encomendas e webhooks. */
+    CLIENTE(Vinculo.CLIENTE, TipoCredencial.PAINEL_WEB, "CLI", "Portal do Cliente",
+            List.of(ENCOMENDA_ACOMPANHAR, WEBHOOK_GERENCIAR)),
+
     ADMINISTRATIVO(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Gestão & Cadastros Base",
             List.of(USUARIO_GERENCIAR, MOTORISTA_CADASTRAR, CLIENTE_CADASTRAR,
                     VEICULO_GERENCIAR, ABASTECIMENTO_REGISTRAR)),
@@ -40,7 +44,12 @@ public enum Perfil {
     private final String modulo;
     private final List<String> permissoes;
 
-    /** Departamento correspondente (nulo para o entregador, que não tem departamento). */
+    /** Quem entra pelo e-mail (painel/portal) precisa ter e-mail cadastrado. */
+    public boolean exigeEmail() {
+        return tipoCredencial == TipoCredencial.PAINEL_WEB;
+    }
+
+    /** Departamento correspondente (nulo para entregador e cliente, que não têm departamento). */
     public Departamento departamento() {
         return vinculo == Vinculo.INTERNO ? Departamento.valueOf(name()) : null;
     }

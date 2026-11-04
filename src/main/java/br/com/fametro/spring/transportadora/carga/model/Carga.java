@@ -1,13 +1,17 @@
 package br.com.fametro.spring.transportadora.carga.model;
 
 import br.com.fametro.spring.transportadora.carga.model.enums.StatusCarga;
+import br.com.fametro.spring.transportadora.usuario.model.Usuario;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -65,6 +69,11 @@ public class Carga {
     @Column(nullable = false)
     private BigDecimal longitude;
 
+    /** Dono da encomenda (perfil CLIENTE): acompanha pelo portal e recebe os webhooks. Opcional. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cliente_id")
+    private Usuario cliente;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private StatusCarga status;
@@ -85,7 +94,7 @@ public class Carga {
     public static Carga nova(String codigo, String descricao, BigDecimal pesoKg, BigDecimal volumeM3,
                              String destinatarioNome, String destinatarioTelefone, String endereco, String bairro,
                              String cidade, String uf, String cep, BigDecimal latitude, BigDecimal longitude,
-                             String cadastradaPor, Instant agora) {
+                             Usuario cliente, String cadastradaPor, Instant agora) {
         Carga c = new Carga();
         c.codigo = codigo;
         c.descricao = descricao;
@@ -100,6 +109,7 @@ public class Carga {
         c.cep = cep;
         c.latitude = latitude;
         c.longitude = longitude;
+        c.cliente = cliente;
         c.status = StatusCarga.AGUARDANDO_ROTA;
         c.cadastradaPor = cadastradaPor;
         c.criadaEm = agora;
@@ -127,6 +137,9 @@ public class Carga {
         this.longitude = longitude;
         tocar(agora);
     }
+
+    /** Troca (ou remove, com nulo) o cliente dono da encomenda. */
+    public void vincularCliente(Usuario cliente, Instant agora) { this.cliente = cliente; tocar(agora); }
 
     public void cancelar(Instant agora) { status = StatusCarga.CANCELADA; tocar(agora); }
     public void roteirizar(Instant agora) { status = StatusCarga.ROTEIRIZADA; tocar(agora); }

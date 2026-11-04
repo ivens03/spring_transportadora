@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Repository
 public interface CargaRepository extends JpaRepository<Carga, Long>, JpaSpecificationExecutor<Carga> {
@@ -27,6 +28,16 @@ public interface CargaRepository extends JpaRepository<Carga, Long>, JpaSpecific
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Carga c where c.id in :ids order by c.id")
     List<Carga> travarPorIds(@Param("ids") Collection<Long> ids);
+
+    /** Encomenda do portal: só acha se for do cliente (a de outro cliente responde 404). */
+    Optional<Carga> findByCodigoAndClienteId(String codigo, Long clienteId);
+
+    /** Encomendas do cliente, com status opcional. */
+    static Specification<Carga> doCliente(Long clienteId, StatusCarga status) {
+        return (root, query, cb) -> status == null
+                ? cb.equal(root.get("cliente").get("id"), clienteId)
+                : cb.and(cb.equal(root.get("cliente").get("id"), clienteId), cb.equal(root.get("status"), status));
+    }
 
     /** Filtros opcionais (nulo = não filtra); cidade e bairro sem diferenciar maiúscula. */
     static Specification<Carga> filtro(StatusCarga status, String cidade, String bairro) {

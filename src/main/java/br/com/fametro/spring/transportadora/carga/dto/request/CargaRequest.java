@@ -49,5 +49,9 @@ public record CargaRequest(
         @Schema(example = "-38.497700") @NotNull(message = "Informe a longitude.")
         @DecimalMin(value = "-180", message = "Longitude inválida.") @DecimalMax(value = "180", message = "Longitude inválida.")
         @Digits(integer = 3, fraction = 6, message = "Longitude com até 6 casas decimais.")
-        BigDecimal longitude) {
+        BigDecimal longitude,
+        @Schema(description = "Matrícula do cliente dono da encomenda (GET /api/v1/clientes). Opcional: com cliente, "
+                + "ele acompanha pelo portal e recebe os webhooks.", example = "CLI-000001", nullable = true)
+        @Size(max = 20, message = "Matrícula do cliente inválida.")
+        String clienteMatricula) {
 }

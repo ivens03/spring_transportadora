@@ -9,6 +9,7 @@ import br.com.fametro.spring.transportadora.seguranca.service.VerificacaoCredenc
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioPatchRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.response.CodigoAtivacaoResponse;
+import br.com.fametro.spring.transportadora.usuario.dto.response.ClienteResponse;
 import br.com.fametro.spring.transportadora.usuario.dto.response.EntregadorResponse;
 import br.com.fametro.spring.transportadora.usuario.dto.response.UsuarioResponse;
 import br.com.fametro.spring.transportadora.usuario.model.Usuario;
@@ -44,8 +45,8 @@ public class UsuarioService {
         String email = request.email() == null || request.email().isBlank()
                 ? null : Usuario.normalizarEmail(request.email());
 
-        if (perfil.getVinculo() == Vinculo.INTERNO && email == null) {
-            throw new RegraNegocioException("Funcionário precisa de e-mail corporativo (é o login do painel).");
+        if (perfil.exigeEmail() && email == null) {
+            throw new RegraNegocioException(semEmail(perfil));
         }
         if (email != null && usuarioRepository.existsByEmail(email)) {
             throw new ConflitoException("Já existe usuário com este e-mail.");
@@ -68,10 +69,19 @@ public class UsuarioService {
     /** Entregadores para o Suporte escolher ao montar a rota (status nulo = todos). */
     @Transactional(readOnly = true)
     public Page<EntregadorResponse> listarEntregadores(StatusUsuario status, Pageable pageable) {
-        Page<Usuario> pagina = status == null
-                ? usuarioRepository.findByPerfil(Perfil.ENTREGADOR, pageable)
-                : usuarioRepository.findByPerfilAndStatus(Perfil.ENTREGADOR, status, pageable);
-        return pagina.map(EntregadorResponse::de);
+        return listarPorPerfil(Perfil.ENTREGADOR, status, pageable).map(EntregadorResponse::de);
+    }
+
+    /** Clientes para o Suporte vincular à carga (status nulo = todos). */
+    @Transactional(readOnly = true)
+    public Page<ClienteResponse> listarClientes(StatusUsuario status, Pageable pageable) {
+        return listarPorPerfil(Perfil.CLIENTE, status, pageable).map(ClienteResponse::de);
+    }
+
+    private Page<Usuario> listarPorPerfil(Perfil perfil, StatusUsuario status, Pageable pageable) {
+        return status == null
+                ? usuarioRepository.findByPerfil(perfil, pageable)
+                : usuarioRepository.findByPerfilAndStatus(perfil, status, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -124,8 +134,8 @@ public class UsuarioService {
 
     private void alterarEmail(Usuario usuario, String email, Instant agora) {
         if (email.isBlank()) {
-            if (usuario.getPerfil().getVinculo() == Vinculo.INTERNO) {
-                throw new RegraNegocioException("Funcionário precisa de e-mail corporativo (é o login do painel).");
+            if (usuario.getPerfil().exigeEmail()) {
+                throw new RegraNegocioException(semEmail(usuario.getPerfil()));
             }
             usuario.alterarEmail(null, agora);
             return;
@@ -150,6 +160,12 @@ public class UsuarioService {
         return admin.getMatricula();
     }
 
+    private static String semEmail(Perfil perfil) {
+        return perfil == Perfil.CLIENTE
+                ? "Cliente precisa de e-mail (é o login do Portal do Cliente)."
+                : "Funcionário precisa de e-mail corporativo (é o login do painel).";
+    }
+
     /** Aplica as duas decisões do fluxo: "Qual o vínculo?" e, se interno, "Qual o departamento?". */
     private Perfil definirPerfil(Vinculo vinculo, Departamento departamento) {
         if (vinculo == Vinculo.EXTERNO) {
@@ -157,6 +173,12 @@ public class UsuarioService {
                 throw new RegraNegocioException("Entregador (vínculo EXTERNO) não tem departamento.");
             }
             return Perfil.ENTREGADOR;
+        }
+        if (vinculo == Vinculo.CLIENTE) {
+            if (departamento != null) {
+                throw new RegraNegocioException("Cliente (vínculo CLIENTE) não tem departamento.");
+            }
+            return Perfil.CLIENTE;
         }
         if (departamento == null) {
             throw new RegraNegocioException("Funcionário (vínculo INTERNO) precisa informar o departamento.");
@@ -185,7 +207,7 @@ public class UsuarioService {
                     + perfil.getPrefixoMatricula() + "- (perfil " + perfil + ").");
         }
         String e = email == null || email.isBlank() ? null : Usuario.normalizarEmail(email);
-        if (perfil.getVinculo() == Vinculo.INTERNO && e == null) {
+        if (perfil.exigeEmail() && e == null) {
             throw new IllegalStateException("Conta de teste " + perfil + " precisa de e-mail (login do painel).");
         }
         PoliticaCredencial.validar(perfil.getTipoCredencial(), credencial);
@@ -224,9 +246,11 @@ public class UsuarioService {
     }
 
     private String gerarMatricula(Perfil perfil) {
-        long numero = perfil == Perfil.ENTREGADOR
-                ? usuarioRepository.proximoNumeroMatriculaEntregador()
-                : usuarioRepository.proximoNumeroMatriculaFuncionario();
+        long numero = switch (perfil) {
+            case ENTREGADOR -> usuarioRepository.proximoNumeroMatriculaEntregador();
+            case CLIENTE -> usuarioRepository.proximoNumeroMatriculaCliente();
+            default -> usuarioRepository.proximoNumeroMatriculaFuncionario();
+        };
         return "%s-%06d".formatted(perfil.getPrefixoMatricula(), numero);
     }
 }

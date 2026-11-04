@@ -10,7 +10,9 @@ import br.com.fametro.spring.transportadora.rota.model.Rota;
 import br.com.fametro.spring.transportadora.rota.model.enums.StatusRota;
 import br.com.fametro.spring.transportadora.rota.repository.PosicaoRotaLoteRepository;
 import br.com.fametro.spring.transportadora.rota.repository.PosicaoRotaRepository;
+import br.com.fametro.spring.transportadora.encomenda.evento.PosicoesRecebidas;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,7 @@ public class RastreamentoService {
     private final PosicaoRotaRepository posicaoRotaRepository;
     private final PosicaoRotaLoteRepository posicaoRotaLoteRepository;
     private final RotaProperties props;
+    private final ApplicationEventPublisher eventos;
     private final Clock clock;
 
     /**
@@ -58,6 +61,9 @@ public class RastreamentoService {
                 .forEach(p -> unicas.putIfAbsent(p.registradaEm().toInstant(), p));
 
         int gravadas = posicaoRotaLoteRepository.inserirNovas(rota.getId(), List.copyOf(unicas.values()), agora);
+        if (gravadas > 0 && rota.getStatus() == StatusRota.EM_ANDAMENTO) {
+            eventos.publishEvent(new PosicoesRecebidas(rota.getId())); // webhook de localização
+        }
         return new LotePosicoesResponse(lote.posicoes().size(), gravadas, lote.posicoes().size() - gravadas);
     }
 

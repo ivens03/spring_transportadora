@@ -5,11 +5,13 @@ graph TD
     %% Ramificação Principal
     B -->|EXTERNO - Operação Externa| C[Matrícula ENT-xxxxxx: Entregador]
     B -->|INTERNO - Operação Interna| D[Matrícula FUN-xxxxxx: Funcionário]
+    B -->|CLIENTE - empresa que envia encomendas| K[Matrícula CLI-xxxxxx: Cliente<br/>e-mail obrigatório, sem departamento]
 
     %% Credencial de cada vínculo
     C --> CA[[Código de ativação 72h - uso único]]
     D --> DA[[Código de ativação 72h - uso único]]
     CA --> CC{{Credencial APP_ENTREGADOR<br/>login: matrícula + PIN 6 dígitos<br/>token 12h - cobre a jornada}}
+    K --> DA
     DA --> DC{{Credencial PAINEL_WEB<br/>login: e-mail corporativo + senha<br/>token 8h - expediente}}
 
     %% Fluxo Entregador
@@ -21,21 +23,27 @@ graph TD
 
     %% Fluxo Funcionário e Subdivisões
     DC --> F{Qual o Departamento?}
+    DC -->|perfil CLIENTE| P[Portal do Cliente]
+    P --> P1(Acompanhar minhas encomendas: posição do veículo e previsão - /api/v1/encomendas)
+    P --> P2(Webhooks assinados HMAC: avisos de status e localização - /api/v1/webhooks)
+    P -.-> P3>Só as próprias encomendas - token sem permissões do painel interno]
 
     %% Administrativo (Foco em Estrutura)
     F -->|ADMINISTRATIVO| G[Gestão & Cadastros Base]
     G --> G0(Gerar matrículas, reemitir código, bloquear - /api/v1/usuarios)
     G --> G1(Cadastrar Motoristas / CNH)
     G --> FROTA
-    G --> G3(Cadastrar Empresas Clientes)
+    G --> G3(Cadastrar Empresas Clientes - POST /api/v1/usuarios vinculo CLIENTE)
 
     %% Suporte (Foco Operacional e Despacho)
     F -->|SUPORTE| S[Operação Diária & Despacho]
-    S --> S1(Cadastrar cargas - /api/v1/cargas)
+    S --> S1(Cadastrar cargas e vincular ao cliente - /api/v1/cargas)
     S --> S4(Escolher cargas + veículo + entregador e gerar rota otimizada - POST /api/v1/rotas)
     S --> S2(Acompanhar mapa: rota, última posição e rastro)
     S4 -.->|rota PLANEJADA aparece no app| E1
     E3 -.->|rastro| S2
+    E2 -.->|status da encomenda| P2
+    E3 -.->|localização 1/min| P2
     S --> S3(Tratar Atrasos e Dispositivos Offline)
     S --> FROTA
 
@@ -74,7 +82,9 @@ graph TD
     class A start_end;
     class C entregador;
     class D funcionario;
+    classDef cliente fill:#fd7e14,stroke:#c75f08,stroke-width:2px,color:#fff;
+    class K,P cliente;
     class CA,DA,CC,DC credencial;
     classDef frota fill:#6f42c1,stroke:#4e2a8e,stroke-width:2px,color:#fff;
     class FROTA frota;
-    class E1,E2,E3,G0,G1,G3,S1,S2,S3,S4,H1,H2,H3,H4,V1,V2,I1,I2 permissao;
+    class E1,E2,E3,G0,G1,G3,S1,S2,S3,S4,H1,H2,H3,H4,V1,V2,I1,I2,P1,P2 permissao;

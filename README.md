@@ -27,6 +27,15 @@ br.com.fametro.spring.transportadora
 │   ├── model/                   ChaveSalt (seguranca.chave_salt)
 │   ├── repository/              ChaveSaltRepository
 │   └── service/                 CredencialService, Argon2Hasher
+├── carga/ e rota/               cargas, rota otimizada, execução no app e GPS (publicam EncomendaAlterada)
+├── encomenda/                   Portal do Cliente: rastreio (posição + previsão), linha do tempo, eventos
+│   ├── evento/                  EncomendaAlterada, PosicoesRecebidas (eventos de aplicação Spring)
+│   └── service/                 RastreioEncomendaService, EncomendaService, HistoricoEncomendaListener
+├── webhook/                     avisos para o servidor do cliente (outbox + despachante assinado)
+│   ├── config/                  WebhookProperties, WebhookConfig (HttpClient), WebhookAgendamentoConfig (@Scheduled)
+│   ├── model/                   Webhook, WebhookEntrega (fila + histórico)
+│   ├── repository/              WebhookRepository, WebhookEntregaRepository, FilaWebhookRepository (SKIP LOCKED)
+│   └── service/                 WebhookService, EnfileiradorWebhook, DespachanteWebhook, AssinaturaWebhook, ValidadorUrlWebhook
 ├── config/                      configurações gerais: AppConfig, OpenApiConfig (Swagger), RotaCertaProperties, VariaveisAmbienteObrigatorias
 └── exception/                   tratamento de erro global (vale para todos os módulos)
     ├── custom/                  RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409
@@ -77,6 +86,7 @@ Em servidor, as mesmas chaves podem vir como variáveis de ambiente.
 | `ROTACERTA_TESTE_ATIVO` | `true` liga as contas fixas de teste (só no perfil dev; prod ignora) |
 | `ROTACERTA_TESTE_<PERFIL>_MATRICULA` / `_EMAIL` / `_SENHA` | conta de teste de ADMINISTRATIVO, SUPORTE, FINANCEIRO e DESENVOLVIMENTO |
 | `ROTACERTA_TESTE_ENTREGADOR_MATRICULA` / `_PIN` | conta de teste do entregador (login no app) |
+| `ROTACERTA_TESTE_CLIENTE_MATRICULA` / `_EMAIL` / `_SENHA` | conta de teste do cliente (Portal do Cliente, matrícula `CLI-…`) |
 
 ### Contas fixas de teste (dev)
 
@@ -92,6 +102,7 @@ e `rotacerta.bootstrap.teste.ativo=false`).
 | FINANCEIRO | `FUN-TESTE-FIN` | e-mail + senha do `.env` |
 | DESENVOLVIMENTO | `FUN-TESTE-DEV` | e-mail + senha do `.env` |
 | ENTREGADOR | `ENT-TESTE-01` | matrícula + PIN do `.env` (app) |
+| CLIENTE | `CLI-TESTE-01` | e-mail + senha do `.env` (Portal do Cliente) |
 
 ## Acesso: um tipo de credencial por vínculo, permissões por perfil
 
@@ -104,6 +115,7 @@ Fluxo completo em [`docs/fluxo-acesso.mmd`](docs/fluxo-acesso.mmd) (Mermaid).
 | INTERNO  | SUPORTE               | `PAINEL_WEB`     | e-mail + senha                    | 8h    |
 | INTERNO  | FINANCEIRO            | `PAINEL_WEB`     | e-mail + senha                    | 8h    |
 | INTERNO  | DESENVOLVIMENTO       | `PAINEL_WEB`     | e-mail + senha                    | 8h    |
+| CLIENTE  | CLIENTE               | `PAINEL_WEB`     | e-mail + senha (matrícula `CLI-…`) | 8h   |
 
 O acesso é decidido pelas **permissões** que vão no token (claim `permissoes`), junto com o tipo de credencial.
 Toda rota não liberada explicitamente é **negada** (deny by default: 403 com token, 401 sem token).
@@ -119,7 +131,9 @@ Toda rota não liberada explicitamente é **negada** (deny by default: 403 com t
 | `entrega:ver-atribuidas` | ENTREGADOR | ver as **próprias** rotas (`GET /api/v1/rotas/**`; as dos outros dão 404) |
 | `entrega:atualizar-status` | ENTREGADOR | iniciar a rota e baixar paradas (`PATCH`) |
 | `posicao:sincronizar` | ENTREGADOR | enviar GPS (`POST /api/v1/rotas/{id}/posicoes`) |
-| `motorista:cadastrar`, `cliente:cadastrar` | ADMINISTRATIVO | próximos módulos |
+| `encomenda:acompanhar` | CLIENTE | as **próprias** encomendas (`GET /api/v1/encomendas/**`; as dos outros dão 404) |
+| `webhook:gerenciar` | CLIENTE | os **próprios** webhooks (`/api/v1/webhooks/**`) |
+| `motorista:cadastrar`, `cliente:cadastrar` | ADMINISTRATIVO | próximos módulos (o cliente é cadastrado em `/usuarios` com `usuario:gerenciar`) |
 | `ocorrencia:tratar` | SUPORTE | próximos módulos |
 | `frete:*`, `desconto:*`, `faturamento:consultar` | FINANCEIRO | próximos módulos |
 | `mensageria:monitorar`, `dispositivo:consultar-logs` | DESENVOLVIMENTO | próximos módulos |
@@ -198,6 +212,54 @@ A tolerância (`rotacerta.frota.tolerancia-consumo-percentual`) e o fuso ficam n
 |---|---|---|
 | AGUARDANDO_ROTA → ROTEIRIZADA → EM_TRANSITO → ENTREGUE (ou volta a AGUARDANDO_ROTA); CANCELADA | PLANEJADA → EM_ANDAMENTO → CONCLUIDA; PLANEJADA → CANCELADA | PENDENTE → ENTREGUE / NAO_ENTREGUE |
 
+## Portal do Cliente: encomendas e webhooks
+
+O **cliente** é a empresa que despacha encomendas pela transportadora. O Administrativo cria a matrícula
+(`POST /api/v1/usuarios` com `"vinculo":"CLIENTE"` e e-mail; sem departamento) → `CLI-000001`; o cliente ativa a
+senha como qualquer usuário do painel e entra em `/auth/painel/tokens`. O token só tem `encomenda:acompanhar` e
+`webhook:gerenciar`: nada do painel interno. O Suporte vincula a carga ao cliente com `clienteMatricula` no
+cadastro (ou no `PATCH`; `""` desvincula) e consulta os clientes em `GET /api/v1/clientes`.
+
+**Acompanhar** (`GET /api/v1/encomendas/{codigo}`): status, rota, **última posição do veículo**, quantas entregas
+faltam antes da sua, distância e **previsão de chegada** (da posição atual, passando pelas entregas anteriores, até
+o destino: linha reta × 1,3 ÷ 25 km/h + 5 min por entrega anterior) e a linha do tempo. A posição só aparece com a
+encomenda a caminho (rota `EM_ANDAMENTO` e parada pendente); o entregador aparece só pelo primeiro nome.
+
+**Webhook**: a transportadora faz `POST` no endereço do cliente a cada evento da encomenda:
+
+| Evento | Quando |
+|---|---|
+| `CADASTRADA` | carga cadastrada (ou passada) para o cliente |
+| `ROTEIRIZADA` | entrou numa rota (já com a previsão a partir do depósito) |
+| `SAIU_PARA_ENTREGA` | o entregador iniciou a rota |
+| `LOCALIZACAO` | GPS novo do veículo, **no máx. 1 por encomenda a cada 60 s** (15 s no dev); a pendente antiga é descartada |
+| `ENTREGUE` / `NAO_ENTREGUE` | baixa da parada (`detalhe` = motivo) |
+| `AGUARDANDO_NOVA_ROTA` | voltou com o veículo ou a rota foi cancelada antes de sair |
+| `CANCELADA` | carga cancelada |
+| `PING` | teste pedido pelo cliente (`POST /webhooks/{id}/pings`) |
+
+Como funciona por dentro:
+
+1. **Outbox**: carga/rota publicam um evento Spring (`EncomendaAlterada`, `PosicoesRecebidas`); os ouvintes
+   gravam a linha do tempo e o aviso (`webhook_entrega`, `PENDENTE`) **na mesma transação** da mudança. Se a mudança
+   falha, o aviso some junto; se o servidor do cliente está fora, a mudança não é afetada.
+2. **Despachante** (`@Scheduled`, a cada 2 s): reserva um lote com `FOR UPDATE SKIP LOCKED` (várias instâncias da API
+   não pegam o mesmo aviso), envia **fora de transação** com timeout (3 s conexão, 5 s resposta) e sem seguir
+   redirecionamento. 2xx = `ENTREGUE`; senão tenta de novo em 30 s, 1 min, 2 min… (teto 1 h) até 8 vezes → `FALHOU`.
+   Entrega **pelo menos uma vez**: o cliente deduplica pelo `X-RotaCerta-Entrega` e ordena por `ocorridoEm`.
+3. **Assinatura**: `X-RotaCerta-Assinatura: sha256=HMAC-SHA256(segredo, X-RotaCerta-Timestamp + "." + corpo)`.
+   O segredo (`whsec_…`, 256 bits) aparece só na criação e na troca (`POST /webhooks/{id}/segredos`).
+4. **Anti-SSRF**: em prod a URL precisa ser `https` e não pode resolver para IP interno (localhost, 10/8, 172.16/12,
+   192.168/16, 169.254 — metadados de nuvem —, 100.64/10, ULA IPv6); revalidado a cada envio. O dev libera http e
+   localhost (`rotacerta.webhook.exigir-https` / `permitir-rede-interna`).
+
+Validação no servidor do cliente (Python):
+
+```python
+esperado = "sha256=" + hmac.new(segredo.encode(), ts.encode() + b"." + corpo_bruto, hashlib.sha256).hexdigest()
+ok = hmac.compare_digest(esperado, headers["X-RotaCerta-Assinatura"]) and abs(time.time() - int(ts)) < 300
+```
+
 ## Endpoints (RESTful, versionados em `/api/v1`)
 
 Documentação completa e testável no Swagger. Caminhos relativos ao endereço base do perfil.
@@ -240,6 +302,16 @@ Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de c
 | PATCH | `/api/v1/rotas/{id}/paradas/{ordem}` | baixa a parada | `entrega:atualizar-status` (app) |
 | POST | `/api/v1/rotas/{id}/posicoes` | lote de GPS — 201 | `posicao:sincronizar` (app) |
 | GET | `/api/v1/rotas/{id}/posicoes?desde=2026-11-04T12:00:00Z` | rastro percorrido | `mapa:acompanhar` / `entrega:ver-atribuidas` |
+| GET | `/api/v1/clientes?status=ATIVO` | clientes (matrícula, nome, e-mail) para vincular à carga | `entrega:cadastrar` ou `usuario:gerenciar` |
+| GET | `/api/v1/encomendas?status=EM_TRANSITO` | minhas encomendas (mais recentes primeiro) | `encomenda:acompanhar` (cliente) |
+| GET | `/api/v1/encomendas/{codigo}` | rastreio: rota, posição do veículo, previsão e linha do tempo | `encomenda:acompanhar` (cliente) |
+| POST | `/api/v1/webhooks` | cadastra webhook — 201 + `Location` + segredo | `webhook:gerenciar` (cliente) |
+| GET | `/api/v1/webhooks` / `/{id}` | lista / detalhe (sem o segredo) | `webhook:gerenciar` (cliente) |
+| PATCH | `/api/v1/webhooks/{id}` | url, eventos, `ativo` (pausar) | `webhook:gerenciar` (cliente) |
+| DELETE | `/api/v1/webhooks/{id}` | exclui — 204 | `webhook:gerenciar` (cliente) |
+| POST | `/api/v1/webhooks/{id}/segredos` | troca o segredo — 201 | `webhook:gerenciar` (cliente) |
+| POST | `/api/v1/webhooks/{id}/pings` | aviso de teste — 202 | `webhook:gerenciar` (cliente) |
+| GET | `/api/v1/webhooks/{id}/entregas?status=FALHOU` | avisos enviados: corpo, HTTP, erro, próxima tentativa | `webhook:gerenciar` (cliente) |
 
 \* público porque quem está com a senha vencida não consegue token; exige a senha/PIN atual.
 
@@ -249,6 +321,10 @@ Exemplos de corpo:
 POST /api/v1/usuarios
 { "nome": "João", "vinculo": "EXTERNO" }
 { "nome": "Maria", "email": "maria@empresa.com", "vinculo": "INTERNO", "departamento": "FINANCEIRO" }
+{ "nome": "Loja Exemplo Ltda", "email": "logistica@loja.com.br", "vinculo": "CLIENTE" }
+
+POST /api/v1/webhooks
+{ "url": "https://loja.com.br/rotacerta/avisos", "eventos": ["SAIU_PARA_ENTREGA", "LOCALIZACAO", "ENTREGUE"] }
 
 POST /api/v1/auth/credenciais
 { "matricula": "ENT-000001", "codigoAtivacao": "R26CWD5F", "credencial": "482917" }

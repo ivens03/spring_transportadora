@@ -11,6 +11,10 @@ public final class Permissoes {
     public static final String ENTREGA_ATUALIZAR_STATUS = "entrega:atualizar-status";
     public static final String POSICAO_SINCRONIZAR = "posicao:sincronizar";
 
+    // Portal do Cliente (só as encomendas/webhooks do próprio cliente)
+    public static final String ENCOMENDA_ACOMPANHAR = "encomenda:acompanhar";
+    public static final String WEBHOOK_GERENCIAR = "webhook:gerenciar";
+
     // Gestão & cadastros
     public static final String USUARIO_GERENCIAR = "usuario:gerenciar";
     public static final String MOTORISTA_CADASTRAR = "motorista:cadastrar";

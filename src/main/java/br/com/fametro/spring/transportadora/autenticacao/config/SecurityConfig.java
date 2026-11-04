@@ -19,6 +19,7 @@ import org.springframework.security.web.access.intercept.RequestAuthorizationCon
 
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ABASTECIMENTO_REGISTRAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.CONSUMO_VER_METRICAS;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENCOMENDA_ACOMPANHAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_ATUALIZAR_STATUS;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_CADASTRAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_VER_ATRIBUIDAS;
@@ -26,6 +27,7 @@ import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.MAPA
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.POSICAO_SINCRONIZAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.USUARIO_GERENCIAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.VEICULO_GERENCIAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.WEBHOOK_GERENCIAR;
 import static org.springframework.security.authorization.AuthorityAuthorizationManager.hasAuthority;
 
 /**
@@ -36,7 +38,7 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
  * PATCH /api/v1/auth/credenciais/{matricula}                     público (exige a credencial atual)
  * GET   /api/v1/auth/sessao                                       qualquer token válido
  * /api/v1/usuarios/**                                             painel + usuario:gerenciar       (ADMINISTRATIVO)
- * GET /api/v1/entregadores                                        painel + entrega:cadastrar ou usuario:gerenciar
+ * GET /api/v1/entregadores, /api/v1/clientes                       painel + entrega:cadastrar ou usuario:gerenciar
  * /api/v1/veiculos/{id}/metricas-consumo, /api/v1/metricas-consumo painel + consumo:ver-metricas  (FINANCEIRO)
  * /api/v1/veiculos/{id}/abastecimentos/**                         painel + abastecimento:registrar (ADM, SUPORTE, FINANCEIRO)
  * /api/v1/veiculos/**                                             painel + veiculo:gerenciar      (ADM, SUPORTE, FINANCEIRO)
@@ -47,6 +49,9 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
  * PATCH /api/v1/rotas/{id}/paradas/{ordem}                        app + entrega:atualizar-status  (ENTREGADOR)
  * POST  /api/v1/rotas/{id}/posicoes                               app + posicao:sincronizar       (ENTREGADOR)
  *   (o entregador só enxerga as próprias rotas: as dos outros respondem 404)
+ * GET   /api/v1/encomendas, /encomendas/{codigo}                  painel + encomenda:acompanhar   (CLIENTE)
+ * /api/v1/webhooks/**                                             painel + webhook:gerenciar      (CLIENTE)
+ *   (o cliente só enxerga as próprias encomendas e webhooks: as dos outros respondem 404)
  * /swagger-ui.html, /v3/api-docs                                  público (documentação)
  * qualquer outra rota                                             negada
  * </pre>
@@ -73,7 +78,7 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
                         // recursos do painel (a ordem importa: o mais específico primeiro)
-                        .requestMatchers(HttpMethod.GET, "/api/v1/entregadores")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/entregadores", "/api/v1/clientes")
                                 .access(AuthorizationManagers.anyOf(painel(ENTREGA_CADASTRAR), painel(USUARIO_GERENCIAR)))
                         .requestMatchers("/api/v1/usuarios", "/api/v1/usuarios/**").access(painel(USUARIO_GERENCIAR))
                         .requestMatchers(HttpMethod.GET, "/api/v1/metricas-consumo", "/api/v1/veiculos/*/metricas-consumo")
@@ -90,6 +95,10 @@ public class SecurityConfig {
                                 .access(AuthorizationManagers.anyOf(painel(ENTREGA_CADASTRAR), app(ENTREGA_ATUALIZAR_STATUS)))
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/rotas/*/paradas/*").access(app(ENTREGA_ATUALIZAR_STATUS))
                         .requestMatchers(HttpMethod.POST, "/api/v1/rotas/*/posicoes").access(app(POSICAO_SINCRONIZAR))
+                        // Portal do Cliente (credencial do painel, mas só as permissões do cliente)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/encomendas", "/api/v1/encomendas/*")
+                                .access(painel(ENCOMENDA_ACOMPANHAR))
+                        .requestMatchers("/api/v1/webhooks", "/api/v1/webhooks/**").access(painel(WEBHOOK_GERENCIAR))
                         // negado por padrão
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(rs -> rs
