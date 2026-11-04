@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 /** Na subida, garante que existe pelo menos um ADMINISTRATIVO para começar a cadastrar usuários. */
 @Slf4j
 @Component
+@org.springframework.core.annotation.Order(1)
 @RequiredArgsConstructor
 public class AdministradorInicialConfig implements ApplicationRunner {
 

@@ -74,6 +74,24 @@ Em servidor, as mesmas chaves podem vir como variáveis de ambiente.
 | `ROTACERTA_JWT_SEGREDO`                   | assinatura HMAC do JWT (≥ 32 bytes) — `openssl rand -base64 48` |
 | `ROTACERTA_PEPPER`                        | pepper do Argon2id (Base64, ≥ 32 bytes) — `openssl rand -base64 32` |
 | `ROTACERTA_ADMIN_EMAIL` / `ROTACERTA_ADMIN_SENHA` | primeiro ADMINISTRATIVO, criado na subida se não existir nenhum |
+| `ROTACERTA_TESTE_ATIVO` | `true` liga as contas fixas de teste (só no perfil dev; prod ignora) |
+| `ROTACERTA_TESTE_<PERFIL>_MATRICULA` / `_EMAIL` / `_SENHA` | conta de teste de ADMINISTRATIVO, SUPORTE, FINANCEIRO e DESENVOLVIMENTO |
+| `ROTACERTA_TESTE_ENTREGADOR_MATRICULA` / `_PIN` | conta de teste do entregador (login no app) |
+
+### Contas fixas de teste (dev)
+
+Com `ROTACERTA_TESTE_ATIVO=true`, a subida em dev garante **uma conta por perfil** com os dados do `.env`
+(senha/PIN só no `.env`). A cada subida a conta volta a ficar pronta: senha/PIN igual ao `.env`, ativa,
+destravada e com chave de salt nova se a de 30 dias venceu. Em prod isso não existe (`@Profile("!prod")`
+e `rotacerta.bootstrap.teste.ativo=false`).
+
+| Perfil | Matrícula | Login |
+|---|---|---|
+| ADMINISTRATIVO | `FUN-TESTE-ADM` | e-mail + senha do `.env` |
+| SUPORTE | `FUN-TESTE-SUP` | e-mail + senha do `.env` |
+| FINANCEIRO | `FUN-TESTE-FIN` | e-mail + senha do `.env` |
+| DESENVOLVIMENTO | `FUN-TESTE-DEV` | e-mail + senha do `.env` |
+| ENTREGADOR | `ENT-TESTE-01` | matrícula + PIN do `.env` (app) |
 
 ## Acesso: um tipo de credencial por vínculo, permissões por perfil
 

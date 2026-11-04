@@ -5,6 +5,7 @@ import br.com.fametro.spring.transportadora.exception.custom.ConflitoException;
 import br.com.fametro.spring.transportadora.exception.custom.RecursoNaoEncontradoException;
 import br.com.fametro.spring.transportadora.exception.custom.RegraNegocioException;
 import br.com.fametro.spring.transportadora.seguranca.service.CredencialService;
+import br.com.fametro.spring.transportadora.seguranca.service.VerificacaoCredencial;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioPatchRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.response.CodigoAtivacaoResponse;
@@ -156,6 +157,60 @@ public class UsuarioService {
     private Usuario carregar(String matricula) {
         return usuarioRepository.findByMatricula(Usuario.normalizarMatricula(matricula))
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Usuário não encontrado: " + matricula));
+    }
+
+    /** O que aconteceu com uma conta fixa de teste na subida. */
+    public enum SituacaoContaTeste { CRIADA, RENOVADA, PRONTA }
+
+    /**
+     * Conta fixa de teste (só fora de prod): cria se não existe; se existe, deixa sempre pronta para uso —
+     * credencial igual à do .env, dentro dos 30 dias, ativa e destravada.
+     */
+    @Transactional
+    public SituacaoContaTeste garantirContaTeste(Perfil perfil, String matricula, String nome, String email,
+                                                 String credencial) {
+        String m = Usuario.normalizarMatricula(matricula);
+        if (!m.startsWith(perfil.getPrefixoMatricula() + "-")) {
+            throw new IllegalStateException("Matrícula de teste " + m + " precisa começar com "
+                    + perfil.getPrefixoMatricula() + "- (perfil " + perfil + ").");
+        }
+        String e = email == null || email.isBlank() ? null : Usuario.normalizarEmail(email);
+        if (perfil.getVinculo() == Vinculo.INTERNO && e == null) {
+            throw new IllegalStateException("Conta de teste " + perfil + " precisa de e-mail (login do painel).");
+        }
+        PoliticaCredencial.validar(perfil.getTipoCredencial(), credencial);
+        if (e != null) {
+            usuarioRepository.findByEmail(e).filter(outro -> !outro.getMatricula().equals(m)).ifPresent(outro -> {
+                throw new IllegalStateException("E-mail de teste " + e + " já pertence a " + outro.getMatricula() + ".");
+            });
+        }
+
+        Instant agora = clock.instant();
+        var existente = usuarioRepository.findByMatricula(m);
+        if (existente.isEmpty()) {
+            Usuario novo = usuarioRepository.save(Usuario.novo(m, nome, e, perfil, null, null, agora));
+            novo.ativar(credencialService.gerar(novo.getId(), credencial).hash(), agora);
+            return SituacaoContaTeste.CRIADA;
+        }
+
+        Usuario conta = existente.get();
+        if (conta.getPerfil() != perfil) {
+            throw new IllegalStateException("Matrícula de teste " + m + " já existe com perfil " + conta.getPerfil() + ".");
+        }
+        boolean pronta = conta.podeAutenticar(agora)
+                && credencialService.verificar(conta.getId(), credencial, conta.getSenhaHash()).situacao()
+                   == VerificacaoCredencial.Situacao.VALIDA;
+        if (!java.util.Objects.equals(conta.getEmail(), e)) {
+            conta.alterarEmail(e, agora);
+        }
+        if (!conta.getNome().equals(nome)) {
+            conta.alterarNome(nome, agora);
+        }
+        if (pronta) {
+            return SituacaoContaTeste.PRONTA;
+        }
+        conta.ativar(credencialService.gerar(conta.getId(), credencial).hash(), agora); // nova chave de 30 dias
+        return SituacaoContaTeste.RENOVADA;
     }
 
     private String gerarMatricula(Perfil perfil) {
