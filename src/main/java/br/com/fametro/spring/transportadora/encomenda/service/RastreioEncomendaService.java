@@ -44,6 +44,7 @@ public class RastreioEncomendaService {
     private final ParadaRotaRepository paradaRotaRepository;
     private final PosicaoRotaRepository posicaoRotaRepository;
     private final RotaProperties props;
+    private final LocalizadorRua localizadorRua;
     private final Clock clock;
 
     /** Vazio quando a encomenda não está em rota (aguardando, cancelada). */
@@ -66,7 +67,7 @@ public class RastreioEncomendaService {
         BigDecimal distancia = null;
         Integer minutos = null;
         Instant chegada = null;
-        LocalizacaoResponse localizacao = aCaminho ? ultima.map(LocalizacaoResponse::de).orElse(null) : null;
+        LocalizacaoResponse localizacao = aCaminho ? ultima.map(p -> LocalizacaoResponse.de(p, localizadorRua.em(p.getLatitude(), p.getLongitude()))).orElse(null) : null;
 
         if (aCaminho || planejada) {
             List<ParadaRota> anteriores = rota.getParadas().stream()
@@ -96,6 +97,43 @@ public class RastreioEncomendaService {
         return new RastreioResponse(rota.getCodigo(), rota.getStatus(), primeiroNome,
                 rota.getVeiculo().getModelo(), rota.getVeiculo().getPlaca(), parada.getOrdem(), antes, localizacao,
                 distancia, minutos, chegada, entregueEm);
+    }
+
+    /**
+     * Frase pronta para quem só quer mostrar/encaminhar o aviso (SMS, WhatsApp, push):
+     * "Na Avenida Bezerra de Menezes, São Gerardo · faltam ~12 min (3,4 km) · 1 entrega antes da sua".
+     * Nulo sem previsão (rota ainda não saiu ou encomenda já entregue).
+     */
+    public static String resumo(RastreioResponse r) {
+        if (r == null || r.previsaoMinutos() == null || r.previsaoChegadaEm() == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        LocalizacaoResponse loc = r.localizacao();
+        if (loc != null && loc.rua() != null) {
+            sb.append("Na ").append(loc.rua());
+            if (loc.bairro() != null) {
+                sb.append(", ").append(loc.bairro());
+            }
+            sb.append(" · faltam ");
+        } else {
+            sb.append("Faltam ");
+        }
+        sb.append("~").append(minutos(r.previsaoMinutos()));
+        if (r.distanciaKm() != null) {
+            sb.append(" (").append(r.distanciaKm().setScale(1, RoundingMode.HALF_UP).toPlainString().replace('.', ',')).append(" km)");
+        }
+        Integer antes = r.entregasAntes();
+        if (antes != null && antes > 0) {
+            sb.append(" · ").append(antes).append(antes == 1 ? " entrega antes da sua" : " entregas antes da sua");
+        } else if (antes != null) {
+            sb.append(" · é a próxima entrega");
+        }
+        return sb.toString();
+    }
+
+    private static String minutos(int min) {
+        return min < 60 ? min + " min" : "%d h %02d min".formatted(min / 60, min % 60);
     }
 
     public Optional<PosicaoRota> ultimaPosicao(Rota rota) {

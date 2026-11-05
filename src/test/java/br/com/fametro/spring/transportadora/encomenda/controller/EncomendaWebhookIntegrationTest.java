@@ -242,6 +242,10 @@ class EncomendaWebhookIntegrationTest extends IntegracaoTestBase {
         assertThat((Object) JsonPath.read(loc.corpo(), "$.rastreio.localizacao.latitude")).isNotNull();
         assertThat(((Number) JsonPath.read(loc.corpo(), "$.rastreio.previsaoMinutos")).intValue()).isPositive();
         assertThat((Integer) JsonPath.read(loc.corpo(), "$.rastreio.entregasAntes")).isEqualTo(2);
+        // frase pronta: no teste o localizador de rua está desligado, então começa por "Faltam"
+        assertThat((String) JsonPath.read(loc.corpo(), "$.detalhe"))
+                .matches("Faltam ~\\d+ min \\(\\d+,\\d km\\) · 2 entregas antes da sua");
+        assertThat((Object) JsonPath.read(loc.corpo(), "$.rastreio.localizacao.rua")).isNull();
         Recebido falha = lojaB.stream().filter(r -> r.header("X-RotaCerta-Evento").equals("NAO_ENTREGUE")).findFirst().orElseThrow();
         assertThat((String) JsonPath.read(falha.corpo(), "$.detalhe")).isEqualTo("Destinatário ausente");
         assertThat((String) JsonPath.read(falha.corpo(), "$.encomenda.codigo")).isEqualTo(codMeio);

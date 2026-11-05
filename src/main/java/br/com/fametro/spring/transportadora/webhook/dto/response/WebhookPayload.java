@@ -19,5 +19,7 @@ public record WebhookPayload(
         Instant ocorridoEm,
         @Schema(description = "Nulo no PING") EncomendaResumoResponse encomenda,
         @Schema(description = "Rota, posição do veículo e previsão (nulo fora de rota)") RastreioResponse rastreio,
-        @Schema(description = "Ex.: motivo da não entrega", example = "Destinatário ausente") String detalhe) {
+        @Schema(description = "Motivo da não entrega; na LOCALIZACAO, a frase com a rua e quanto falta",
+                example = "Na Avenida Bezerra de Menezes, São Gerardo · faltam ~12 min (3,4 km) · é a próxima entrega")
+        String detalhe) {
 }

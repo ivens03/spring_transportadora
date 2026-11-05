@@ -92,7 +92,9 @@ class EnfileiradorWebhook {
                     continue; // avisou há pouco
                 }
                 if (payload == null) {
-                    payload = json(tipo, ultima.get().getRegistradaEm(), carga, rastreioService.rastrear(parada, ultima), null);
+                    RastreioResponse rastreio = rastreioService.rastrear(parada, ultima);
+                    // detalhe = frase pronta com a rua e quanto falta (o JSON também traz os campos separados)
+                    payload = json(tipo, ultima.get().getRegistradaEm(), carga, rastreio, RastreioEncomendaService.resumo(rastreio));
                 }
                 entregaRepository.descartarPendentes(w.getId(), carga.getId(), tipo,
                         StatusEntregaWebhook.PENDENTE, StatusEntregaWebhook.DESCARTADA);

@@ -252,7 +252,8 @@ senha como qualquer usuário do painel e entra em `/auth/painel/tokens`. O token
 `webhook:gerenciar`: nada do painel interno. O Suporte vincula a carga ao cliente com `clienteMatricula` no
 cadastro (ou no `PATCH`; `""` desvincula) e consulta os clientes em `GET /api/v1/clientes`.
 
-**Acompanhar** (`GET /api/v1/encomendas/{codigo}`): status, rota, **última posição do veículo**, quantas entregas
+**Acompanhar** (`GET /api/v1/encomendas/{codigo}`): status, rota, **última posição do veículo** (com a **rua e o
+bairro** onde ele está), quantas entregas
 faltam antes da sua, distância e **previsão de chegada** (da posição atual, passando pelas entregas anteriores, até
 o destino: linha reta × 1,3 ÷ 25 km/h + 5 min por entrega anterior) e a linha do tempo. A posição só aparece com a
 encomenda a caminho (rota `EM_ANDAMENTO` e parada pendente); o entregador aparece só pelo primeiro nome.
@@ -264,7 +265,7 @@ encomenda a caminho (rota `EM_ANDAMENTO` e parada pendente); o entregador aparec
 | `CADASTRADA` | carga cadastrada (ou passada) para o cliente |
 | `ROTEIRIZADA` | entrou numa rota (já com a previsão a partir do depósito) |
 | `SAIU_PARA_ENTREGA` | o entregador iniciou a rota |
-| `LOCALIZACAO` | GPS novo do veículo, **no máx. 1 por encomenda a cada 60 s** (15 s no dev); a pendente antiga é descartada |
+| `LOCALIZACAO` | GPS novo do veículo, **no máx. 1 por encomenda a cada 60 s** (15 s no dev e no homolog); a pendente antiga é descartada. `detalhe` = frase pronta: *"Na Avenida Bezerra de Menezes, São Gerardo · faltam ~12 min (3,4 km) · é a próxima entrega"* |
 | `ENTREGUE` / `NAO_ENTREGUE` | baixa da parada (`detalhe` = motivo) |
 | `AGUARDANDO_NOVA_ROTA` | voltou com o veículo ou a rota foi cancelada antes de sair |
 | `CANCELADA` | carga cancelada |
@@ -284,6 +285,12 @@ Como funciona por dentro:
 4. **Anti-SSRF**: em prod a URL precisa ser `https` e não pode resolver para IP interno (localhost, 10/8, 172.16/12,
    192.168/16, 169.254 — metadados de nuvem —, 100.64/10, ULA IPv6); revalidado a cada envio. O dev libera http e
    localhost (`rotacerta.webhook.exigir-https` / `permitir-rede-interna`).
+
+**Rua pela posição** (`NominatimLocalizadorRua`): geocodificação reversa no [Nominatim](https://nominatim.org)
+(OpenStreetMap, grátis e sem chave). A regra de uso dele é no máximo 1 consulta por segundo, então: cache por
+coordenada arredondada a ~11 m (portal e webhook da mesma posição consultam uma vez só), passou de 1/s responde
+"sem rua" na hora em vez de esperar, timeout de 2 s e, se o serviço cair, 1 min sem tentar. Sem rua, a frase vira
+*"Faltam ~12 min (3,4 km)"* e o resto do rastreio não muda (`rotacerta.rua.*`; desligado nos testes).
 
 Validação no servidor do cliente (Python):
 
