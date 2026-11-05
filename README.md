@@ -59,18 +59,20 @@ Pré-requisitos: JDK 25 e Docker.
 
 ### Perfis
 
-| | **dev** (padrão) | **prod** |
-|---|---|---|
-| Ativar | `./mvnw spring-boot:run` | `SPRING_PROFILES_ACTIVE=prod java -jar target/spring.transportadora-*.jar` |
-| Endereço base | `http://localhost:8085/transportadora_dev` | `https://<servidor>/transportadora` |
-| Swagger | `/transportadora_dev/swagger-ui.html` | `/transportadora/swagger-ui.html` (desliga com `SWAGGER_ENABLED=false`) |
-| Segredos | arquivo `.env` | variáveis de ambiente do servidor (não lê `.env`) |
-| Banco | Postgres do `compose.yaml`, sobe sozinho | `POSTGRES_*` do servidor; pool via `DB_POOL_MAX`/`DB_POOL_MIN` |
-| Log | DEBUG + SQL do Hibernate | INFO, sem SQL |
-| Outros | — | desligamento gracioso, `X-Forwarded-*`, compressão, Flyway sem `clean` |
+| | **dev** (padrão) | **homolog** | **prod** |
+|---|---|---|---|
+| Para quê | máquina do desenvolvedor | servidor de demonstração (VPS) | produção |
+| Ativar | `./mvnw spring-boot:run` | `SPRING_PROFILES_ACTIVE=homolog` (imagem Docker) | `SPRING_PROFILES_ACTIVE=prod java -jar target/spring.transportadora-*.jar` |
+| Endereço base | `http://localhost:8085/transportadora_dev` | `https://<servidor>/transportadora` | `https://<servidor>/transportadora` |
+| Swagger | `/transportadora_dev/swagger-ui.html` | `/transportadora/swagger-ui.html` | `/transportadora/swagger-ui.html` (desliga com `SWAGGER_ENABLED=false`) |
+| Segredos | arquivo `.env` | variáveis de ambiente (Dokploy) | variáveis de ambiente do servidor (não lê `.env`) |
+| Banco | Postgres do `compose.yaml`, sobe sozinho | `POSTGRES_*` (Postgres do Dokploy) | `POSTGRES_*` do servidor; pool via `DB_POOL_MAX`/`DB_POOL_MIN` |
+| Log | DEBUG + SQL do Hibernate | INFO, sem SQL | INFO, sem SQL |
+| Contas fixas de teste | sim (`ROTACERTA_TESTE_ATIVO=true`) | sim (ligadas por padrão) | **nunca** |
+| Outros | — | igual ao prod | desligamento gracioso, `X-Forwarded-*`, compressão, Flyway sem `clean` |
 
-Os endpoints são os mesmos nos dois perfis; muda só o prefixo (`/transportadora_dev` ou `/transportadora`).
-O banner da subida mostra o perfil (verde no dev, vermelho no prod), a URL da API e a do Swagger.
+Os endpoints são os mesmos em todos os perfis; muda só o prefixo (`/transportadora_dev` ou `/transportadora`).
+O banner da subida mostra o perfil (verde no dev, amarelo no homolog, vermelho no prod), a URL da API e a do Swagger.
 Se faltar variável obrigatória, a aplicação para logo na subida listando quais faltam.
 
 O `.env` é lido pelo Spring (`spring.config.import=optional:file:.env[.properties]`) e pelo `docker compose`.
@@ -83,14 +85,14 @@ Em servidor, as mesmas chaves podem vir como variáveis de ambiente.
 | `ROTACERTA_JWT_SEGREDO`                   | assinatura HMAC do JWT (≥ 32 bytes) — `openssl rand -base64 48` |
 | `ROTACERTA_PEPPER`                        | pepper do Argon2id (Base64, ≥ 32 bytes) — `openssl rand -base64 32` |
 | `ROTACERTA_ADMIN_EMAIL` / `ROTACERTA_ADMIN_SENHA` | primeiro ADMINISTRATIVO, criado na subida se não existir nenhum |
-| `ROTACERTA_TESTE_ATIVO` | `true` liga as contas fixas de teste (só no perfil dev; prod ignora) |
+| `ROTACERTA_TESTE_ATIVO` | liga as contas fixas de teste (dev: `false` se ausente; homolog: `true` se ausente; prod ignora) |
 | `ROTACERTA_TESTE_<PERFIL>_MATRICULA` / `_EMAIL` / `_SENHA` | conta de teste de ADMINISTRATIVO, SUPORTE, FINANCEIRO e DESENVOLVIMENTO |
 | `ROTACERTA_TESTE_ENTREGADOR_MATRICULA` / `_PIN` | conta de teste do entregador (login no app) |
 | `ROTACERTA_TESTE_CLIENTE_MATRICULA` / `_EMAIL` / `_SENHA` | conta de teste do cliente (Portal do Cliente, matrícula `CLI-…`) |
 
-### Contas fixas de teste (dev)
+### Contas fixas de teste (dev e homolog)
 
-Com `ROTACERTA_TESTE_ATIVO=true`, a subida em dev garante **uma conta por perfil** com os dados do `.env`
+Com `ROTACERTA_TESTE_ATIVO=true`, a subida em dev (e no homolog) garante **uma conta por perfil** com os dados do `.env`
 (senha/PIN só no `.env`). A cada subida a conta volta a ficar pronta: senha/PIN igual ao `.env`, ativa,
 destravada e com chave de salt nova se a de 30 dias venceu. Em prod isso não existe (`@Profile("!prod")`
 e `rotacerta.bootstrap.teste.ativo=false`).
@@ -103,6 +105,36 @@ e `rotacerta.bootstrap.teste.ativo=false`).
 | DESENVOLVIMENTO | `FUN-TESTE-DEV` | e-mail + senha do `.env` |
 | ENTREGADOR | `ENT-TESTE-01` | matrícula + PIN do `.env` (app) |
 | CLIENTE | `CLI-TESTE-01` | e-mail + senha do `.env` (Portal do Cliente) |
+
+## Deploy: Dokploy na VPS (a cada push na `main`)
+
+O servidor de demonstração é uma VPS Oracle (Ubuntu 24.04 ARM64) com o [Dokploy](https://dokploy.com), uma
+"Heroku/Vercel" que roda no próprio servidor: ele clona o repositório, faz o `docker build` com o `Dockerfile`
+daqui, sobe o container (Docker Swarm) e publica pelo Traefik com HTTPS do Let's Encrypt.
+
+| | |
+|---|---|
+| Painel web + API | https://rotacerta.137-131-162-187.sslip.io (API em `/transportadora/api/v1`, Swagger em `/transportadora/swagger-ui.html`) |
+| Painel do Dokploy | https://dokploy.137-131-162-187.sslip.io |
+| Perfil | `homolog` (igual ao prod + contas fixas de teste) |
+| Banco | Postgres 17 do Dokploy (container `rotacerta-db-…`, só na rede interna) |
+
+```
+ git push (main) ──webhook──▶ Dokploy ──git clone (deploy key, só leitura)──▶ docker build ──▶ container novo
+                                                                                              │
+ navegador / app ──https──▶ Traefik ──/transportadora/**──▶ API (este repo, porta 8080) ──▶ Postgres
+                                    └─────── resto ───────▶ painel Angular (Nginx, porta 80)
+```
+
+- **Deploy automático**: o GitHub chama o webhook do Dokploy a cada push; o Dokploy só faz o deploy se o push
+  for na `main` (push em outra branch é ignorado).
+- **`sslip.io`**: DNS público que devolve o IP escrito no próprio nome (`x.137-131-162-187.sslip.io` →
+  `137.131.162.187`). Dá um domínio de verdade sem comprar nada, e com domínio o Let's Encrypt emite o certificado.
+- **Segredos** (senha do banco, JWT, pepper, contas de teste) ficam só nas variáveis de ambiente da aplicação no
+  Dokploy. Nada disso está no git.
+- **Os testes não rodam no build da imagem** (eles precisam de Docker para o Testcontainers): rode `./mvnw test`
+  antes de cada push.
+- **O IP da VPS é efêmero** enquanto não for reservado no console da Oracle. Se ele mudar, muda também o domínio.
 
 ## Acesso: um tipo de credencial por vínculo, permissões por perfil
 
