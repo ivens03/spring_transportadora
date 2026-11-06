@@ -302,6 +302,11 @@ class RotaControllerIntegrationTest extends IntegracaoTestBase {
                 .andExpect(jsonPath("$.paradas[2].cargaId").value(c.longe()))
                 .andExpect(jsonPath("$.pesoTotalKg").value(300.0));
         acessar(c.suporte(), CARGAS + "/" + c.meio()).andExpect(jsonPath("$.status").value("ROTEIRIZADA"));
+        // relendo do banco: totais e estimativas gravados (não só na resposta)
+        acessar(c.suporte(), ROTAS + "/" + rota)
+                .andExpect(jsonPath("$.pesoTotalKg").value(300.0))
+                .andExpect(jsonPath("$.volumeTotalM3").value(0.15))
+                .andExpect(jsonPath("$.paradas.length()").value(3));
 
         // carga que já está em rota, capacidade e quem pode
         incluir(c.suporte(), rota, c.meio()).andExpect(status().isUnprocessableEntity());

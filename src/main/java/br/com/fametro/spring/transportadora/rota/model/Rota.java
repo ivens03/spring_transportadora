@@ -67,16 +67,16 @@ public class Rota {
     private boolean retornaOrigem;
 
     /** Estimativa pelas ruas (linha reta × fator viário), incluindo o retorno se houver. */
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false) // muda ao incluir entregas antes de sair
     private BigDecimal distanciaEstimadaKm;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false) // muda ao incluir entregas antes de sair
     private Integer duracaoEstimadaMin;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false) // muda ao incluir entregas antes de sair
     private BigDecimal pesoTotalKg;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false) // muda ao incluir entregas antes de sair
     private BigDecimal volumeTotalM3;
 
     @Column(nullable = false, updatable = false)
