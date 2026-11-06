@@ -1,0 +1,213 @@
+{
+  "camadas": [
+    {
+      "id": "celular",
+      "grupo": "uso",
+      "nome": "App Android",
+      "onde": "Celular do entregador, do Suporte ou da empresa cliente",
+      "papel": "Entregador executa a rota e manda o GPS; Suporte cadastra empresa e entrega e acompanha o mapa; empresa acompanha as encomendas e recebe notificação.",
+      "tecnologias": [
+        { "nome": "Kotlin", "versao": "2.2.21", "papel": "Linguagem do app (roda na JVM do Android)" },
+        { "nome": "Jetpack Compose + Material 3", "versao": "BOM 2025.10.01", "papel": "Telas declarativas: a tela é uma função do estado" },
+        { "nome": "Navigation Compose", "versao": "2.9.5", "papel": "Navegação com rotas tipadas (classes @Serializable)" },
+        { "nome": "Lifecycle ViewModel", "versao": "2.9.4", "papel": "Estado de cada tela, sobrevive à rotação" },
+        { "nome": "Kotlin Coroutines", "versao": "1.10.2", "papel": "Chamadas de rede sem travar a tela (suspend)" },
+        { "nome": "Retrofit + kotlinx.serialization", "versao": "3.0.0 / 1.9.0", "papel": "Cliente HTTP da API a partir de uma interface (como um Feign)" },
+        { "nome": "OkHttp", "versao": "5.2.1", "papel": "HTTP, token no cabeçalho e DNS com reserva (DNS-over-HTTPS)" },
+        { "nome": "DataStore", "versao": "1.1.7", "papel": "Guarda o token JWT no celular" },
+        { "nome": "osmdroid", "versao": "6.1.20", "papel": "Mapa OpenStreetMap" },
+        { "nome": "LocationManager + foreground service", "versao": "Android 8 a 16 (SDK 26–36)", "papel": "GPS em segundo plano, com fila em arquivo quando fica sem sinal" }
+      ]
+    },
+    {
+      "id": "navegador",
+      "grupo": "uso",
+      "nome": "Painel web",
+      "onde": "Navegador (computador ou celular)",
+      "papel": "Painel dos funcionários (Suporte, Administrativo, Financeiro, Desenvolvimento) e Portal do Cliente.",
+      "tecnologias": [
+        { "nome": "Angular", "versao": "22.2", "papel": "SPA com componentes standalone, signals e sem zone.js" },
+        { "nome": "TypeScript", "versao": "6.0", "papel": "Linguagem do painel" },
+        { "nome": "RxJS", "versao": "7.8", "papel": "Chamadas HTTP como Observable" },
+        { "nome": "Leaflet", "versao": "1.9.4", "papel": "Mapas (rota, rastreio, ponto da entrega)" },
+        { "nome": "Nginx", "versao": "1.29", "papel": "Serve os arquivos do build e devolve o index.html nas rotas do Angular" }
+      ]
+    },
+    {
+      "id": "borda",
+      "grupo": "uso",
+      "nome": "Entrada (HTTPS)",
+      "onde": "VPS — porta 443",
+      "papel": "Recebe toda requisição, termina o HTTPS e decide para onde vai: /transportadora/** para a API, o resto para o Nginx do painel.",
+      "tecnologias": [
+        { "nome": "sslip.io", "versao": "", "papel": "DNS público: rotacerta.137-131-162-187.sslip.io aponta para o IP escrito no nome" },
+        { "nome": "Let's Encrypt", "versao": "", "papel": "Certificado HTTPS gratuito, renovado sozinho" },
+        { "nome": "Traefik", "versao": "", "papel": "Proxy reverso do Dokploy: roteia pelo host e pelo caminho" }
+      ]
+    },
+    {
+      "id": "api",
+      "grupo": "uso",
+      "nome": "API RotaCerta",
+      "onde": "Container na VPS — porta 8080, prefixo /transportadora",
+      "papel": "Regras de negócio, segurança e dados: usuários, frota, cargas, rotas, GPS, Portal do Cliente e webhooks.",
+      "tecnologias": [
+        { "nome": "Java (Eclipse Temurin)", "versao": "25", "papel": "Linguagem e JVM" },
+        { "nome": "Spring Boot", "versao": "4.1.2", "papel": "Web MVC (REST), Validation, Data JPA" },
+        { "nome": "Spring Security + OAuth2 Resource Server", "versao": "", "papel": "JWT HS256 com as permissões; tudo que não é liberado é negado" },
+        { "nome": "Hibernate (JPA)", "versao": "", "papel": "Mapeia as entidades para as tabelas" },
+        { "nome": "Flyway", "versao": "", "papel": "Migrações versionadas do banco (V1 a V6), aplicadas na subida" },
+        { "nome": "Bouncy Castle", "versao": "1.85", "papel": "Argon2id para senha/PIN (salt no banco, pepper no ambiente)" },
+        { "nome": "springdoc-openapi", "versao": "3.2.0", "papel": "Swagger UI e contrato OpenAPI" },
+        { "nome": "java.net.http.HttpClient", "versao": "", "papel": "Envia webhooks assinados e consulta a rua no Nominatim" },
+        { "nome": "Lombok", "versao": "", "papel": "Menos código repetido (getters, construtores)" }
+      ]
+    },
+    {
+      "id": "banco",
+      "grupo": "uso",
+      "nome": "PostgreSQL",
+      "onde": "Container do Dokploy, só na rede interna da VPS",
+      "papel": "Guarda tudo: usuários, chaves de salt (schema seguranca), frota, cargas, rotas, posições de GPS, eventos e a fila de webhooks.",
+      "tecnologias": [
+        { "nome": "PostgreSQL", "versao": "17", "papel": "Banco relacional" },
+        { "nome": "FOR UPDATE SKIP LOCKED", "versao": "", "papel": "Fila de webhooks sem dois envios do mesmo aviso" },
+        { "nome": "Índices parciais e checks", "versao": "", "papel": "Ex.: CNPJ único só quando preenchido; CNPJ só para perfil CLIENTE" }
+      ]
+    },
+    {
+      "id": "externos",
+      "grupo": "uso",
+      "nome": "Serviços públicos",
+      "onde": "Internet",
+      "papel": "Mapas e endereços sem chave de API.",
+      "tecnologias": [
+        { "nome": "OpenStreetMap (tiles)", "versao": "", "papel": "Imagens do mapa no painel e no app" },
+        { "nome": "Nominatim", "versao": "", "papel": "Endereço → coordenada (cadastro) e coordenada → rua (rastreio)" },
+        { "nome": "ViaCEP", "versao": "", "papel": "CEP → rua, bairro e cidade" },
+        { "nome": "DNS-over-HTTPS (Cloudflare, Google)", "versao": "", "papel": "Reserva do app quando a rede bloqueia o domínio" }
+      ]
+    },
+    {
+      "id": "cliente",
+      "grupo": "uso",
+      "nome": "Sistema da empresa cliente",
+      "onde": "Servidor do cliente",
+      "papel": "Recebe os avisos da encomenda (webhook) e confere a assinatura.",
+      "tecnologias": [
+        { "nome": "Webhook HTTP POST", "versao": "", "papel": "CADASTRADA, ROTEIRIZADA, SAIU_PARA_ENTREGA, LOCALIZACAO, ENTREGUE, NAO_ENTREGUE" },
+        { "nome": "HMAC-SHA256", "versao": "", "papel": "Cabeçalho X-RotaCerta-Assinatura = HMAC(segredo, timestamp + \".\" + corpo)" }
+      ]
+    },
+    {
+      "id": "dev",
+      "grupo": "entrega",
+      "nome": "Máquina de desenvolvimento",
+      "onde": "PC do desenvolvedor",
+      "papel": "Escreve o código, roda os testes e faz commit + push.",
+      "tecnologias": [
+        { "nome": "Maven Wrapper + JUnit 5 + Testcontainers", "versao": "", "papel": "Testes da API com Postgres de verdade em container" },
+        { "nome": "Angular CLI + Vitest", "versao": "Vitest 5", "papel": "Build e testes do painel" },
+        { "nome": "Gradle + JUnit 4", "versao": "AGP 8.13", "papel": "Build e testes do app (APK debug)" }
+      ]
+    },
+    {
+      "id": "github",
+      "grupo": "entrega",
+      "nome": "GitHub",
+      "onde": "Nuvem",
+      "papel": "Três repositórios privados (spring, angular, kotlin). Cada push na main avisa o Dokploy.",
+      "tecnologias": [
+        { "nome": "Git", "versao": "", "papel": "Histórico; um commit por passo testado" },
+        { "nome": "Webhook do repositório", "versao": "", "papel": "Chama o Dokploy a cada push" },
+        { "nome": "Deploy key (só leitura)", "versao": "", "papel": "O servidor clona sem ter senha de ninguém" }
+      ]
+    },
+    {
+      "id": "vps",
+      "grupo": "entrega",
+      "nome": "VPS Oracle Cloud",
+      "onde": "137.131.162.187 — Ubuntu 24.04 ARM64",
+      "papel": "Roda tudo em containers: Traefik, API, painel (Nginx) e Postgres. O Dokploy faz o deploy.",
+      "tecnologias": [
+        { "nome": "Dokploy", "versao": "", "papel": "\"Heroku no próprio servidor\": clona, faz o docker build e troca o container" },
+        { "nome": "Docker (Swarm)", "versao": "", "papel": "Containers e rede interna entre API e banco" },
+        { "nome": "Dockerfile multi-stage", "versao": "", "papel": "API: temurin:25-jdk compila, temurin:25-jre roda. Painel: node:24 compila, nginx:1.29 serve" },
+        { "nome": "Variáveis de ambiente", "versao": "", "papel": "Segredos (banco, JWT, pepper) ficam só no Dokploy, nunca no git" }
+      ]
+    }
+  ],
+  "fluxos": [
+    {
+      "id": "login",
+      "titulo": "Login e permissões",
+      "resumo": "Cada chamada leva um token JWT; a API decide pelo que está escrito nele.",
+      "passos": [
+        { "de": "celular", "para": "borda", "oque": "POST /auth/app/tokens (matrícula + PIN) ou /auth/painel/tokens (e-mail + senha), por HTTPS" },
+        { "de": "borda", "para": "api", "oque": "Traefik vê /transportadora/** e repassa para o container da API" },
+        { "de": "api", "para": "banco", "oque": "Busca o usuário e o salt ativo; confere o Argon2id com o pepper que só existe no ambiente" },
+        { "de": "api", "para": "celular", "oque": "Devolve o JWT (HS256) com perfil e permissões: 12 h no app, 8 h no painel" },
+        { "de": "navegador", "para": "api", "oque": "Toda chamada seguinte vai com Authorization: Bearer; o SecurityConfig libera por permissão e nega o resto (403)" }
+      ]
+    },
+    {
+      "id": "entrega",
+      "titulo": "Empresa → entrega → entregador",
+      "resumo": "O Suporte cadastra a empresa, cria a entrega para ela e escolhe quem leva.",
+      "passos": [
+        { "de": "navegador", "para": "externos", "oque": "CEP no ViaCEP preenche o endereço; Nominatim acha a coordenada do ponto" },
+        { "de": "navegador", "para": "api", "oque": "POST /clientes: CNPJ (inclusive o alfanumérico) conferido, gera CLI-… e o código de ativação" },
+        { "de": "api", "para": "banco", "oque": "Grava a empresa (perfil CLIENTE) com endereço e ponto; o código fica só como hash" },
+        { "de": "celular", "para": "api", "oque": "POST /cargas com a empresa: o destino é o endereço dela" },
+        { "de": "celular", "para": "api", "oque": "Com entregador: POST /rotas (rota nova) ou POST /rotas/{id}/cargas (entra na rota que ainda não saiu)" },
+        { "de": "api", "para": "banco", "oque": "Confere capacidade, ordena as paradas (vizinho mais próximo + 2-opt) e grava a rota" },
+        { "de": "api", "para": "cliente", "oque": "Evento ROTEIRIZADA vai para a fila e sai como webhook assinado" }
+      ]
+    },
+    {
+      "id": "gps",
+      "titulo": "GPS ao vivo → Portal do Cliente",
+      "resumo": "O celular do entregador alimenta o mapa do Suporte, o portal e os avisos da empresa.",
+      "passos": [
+        { "de": "celular", "para": "celular", "oque": "Foreground service filtra o GPS (2 s e 15 m) e grava na fila em arquivo antes de enviar" },
+        { "de": "celular", "para": "api", "oque": "POST /rotas/{id}/posicoes em lotes de até 500; reenviar não duplica" },
+        { "de": "api", "para": "banco", "oque": "Grava as posições e calcula quanto falta até cada encomenda" },
+        { "de": "api", "para": "externos", "oque": "Nominatim diz a rua (cache por coordenada, no máximo 1 consulta por segundo)" },
+        { "de": "api", "para": "cliente", "oque": "Webhook LOCALIZACAO: \"Na Avenida …, bairro · faltam ~12 min\"" },
+        { "de": "navegador", "para": "api", "oque": "Portal e mapa do Suporte buscam só as posições novas (?desde=) a cada poucos segundos" }
+      ]
+    },
+    {
+      "id": "deploy",
+      "titulo": "Do commit ao ar",
+      "resumo": "Push na main = versão nova no servidor em poucos minutos, sem acessar a VPS.",
+      "passos": [
+        { "de": "dev", "para": "dev", "oque": "Testes antes do commit: API (Testcontainers), painel (Vitest) e app (JUnit)" },
+        { "de": "dev", "para": "github", "oque": "git push na main" },
+        { "de": "github", "para": "vps", "oque": "Webhook avisa o Dokploy (push em outra branch é ignorado)" },
+        { "de": "vps", "para": "github", "oque": "Dokploy clona o repositório com a deploy key" },
+        { "de": "vps", "para": "vps", "oque": "docker build pelo Dockerfile; o container novo sobe e o Flyway aplica as migrações pendentes" },
+        { "de": "vps", "para": "borda", "oque": "Traefik passa a mandar o tráfego para o container novo" },
+        { "de": "dev", "para": "celular", "oque": "O app não passa pela VPS: o APK é gerado pelo Gradle e instalado por USB (adb)" }
+      ]
+    }
+  ],
+  "ferramentas": [
+    { "nome": "Claude Code", "categoria": "Desenvolvimento", "para": "Assistente que escreveu, testou, fez os commits e validou no navegador e no celular" },
+    { "nome": "Git + GitHub", "categoria": "Desenvolvimento", "para": "Versão do código; commit e push a cada passo testado" },
+    { "nome": "Maven Wrapper (./mvnw)", "categoria": "Build e testes", "para": "Compila a API e roda os testes de integração" },
+    { "nome": "Testcontainers", "categoria": "Build e testes", "para": "Sobe um Postgres de verdade em container durante os testes" },
+    { "nome": "Angular CLI + Vitest", "categoria": "Build e testes", "para": "Build de produção e testes do painel" },
+    { "nome": "Gradle + Android SDK (JDK 21)", "categoria": "Build e testes", "para": "Gera o APK e roda os testes do app" },
+    { "nome": "Docker / Docker Compose", "categoria": "Infra", "para": "Postgres local no perfil dev (compose.yaml) e imagens do deploy" },
+    { "nome": "Dokploy", "categoria": "Infra", "para": "Painel de deploy na VPS: aplicações, banco, domínios e variáveis de ambiente" },
+    { "nome": "Swagger UI", "categoria": "API", "para": "Documentação e teste dos endpoints em /transportadora/swagger-ui.html" },
+    { "nome": "Playwright", "categoria": "Teste manual automatizado", "para": "Abre o painel num navegador e clica como um usuário (cadastro de empresa, nova entrega)" },
+    { "nome": "adb + uiautomator", "categoria": "Teste manual automatizado", "para": "Instala o APK no celular por USB, lê a tela, toca e digita, tira print" },
+    { "nome": "Emulador Android", "categoria": "Teste manual automatizado", "para": "Primeiros testes do app antes do celular de verdade" },
+    { "nome": "Proxy local do painel", "categoria": "Rede", "para": "Serve o build do Angular no PC e repassa /transportadora para a VPS, para testar antes do deploy" },
+    { "nome": "Proxy HTTP (Squid)", "categoria": "Rede", "para": "Saída do Gradle e do git push na rede do trabalho" },
+    { "nome": "Roteamento só para os testes", "categoria": "Rede", "para": "A rede cabeada bloqueia o domínio da VPS; os processos de teste saem pelo Wi-Fi sem mudar a rota do PC" },
+    { "nome": "curl / Python", "categoria": "Rede", "para": "Chamadas diretas na API da VPS para conferir o resultado no banco" }
+  ]
+}

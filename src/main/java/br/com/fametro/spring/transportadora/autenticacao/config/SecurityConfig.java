@@ -25,6 +25,7 @@ import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTR
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_CADASTRAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_VER_ATRIBUIDAS;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.MAPA_ACOMPANHAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.MENSAGERIA_MONITORAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.POSICAO_SINCRONIZAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.USUARIO_GERENCIAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.VEICULO_GERENCIAR;
@@ -83,6 +84,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/entregadores", "/api/v1/clientes")
                                 .access(AuthorizationManagers.anyOf(painel(ENTREGA_CADASTRAR), painel(USUARIO_GERENCIAR)))
                         .requestMatchers(HttpMethod.POST, "/api/v1/clientes").access(painel(CLIENTE_CADASTRAR))
+                        .requestMatchers(HttpMethod.GET, "/api/v1/arquitetura").access(painel(MENSAGERIA_MONITORAR))
                         .requestMatchers("/api/v1/usuarios", "/api/v1/usuarios/**").access(painel(USUARIO_GERENCIAR))
                         .requestMatchers(HttpMethod.GET, "/api/v1/metricas-consumo", "/api/v1/veiculos/*/metricas-consumo")
                                 .access(painel(CONSUMO_VER_METRICAS))

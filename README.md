@@ -36,6 +36,7 @@ br.com.fametro.spring.transportadora
 │   ├── model/                   Webhook, WebhookEntrega (fila + histórico)
 │   ├── repository/              WebhookRepository, WebhookEntregaRepository, FilaWebhookRepository (SKIP LOCKED)
 │   └── service/                 WebhookService, EnfileiradorWebhook, DespachanteWebhook, AssinaturaWebhook, ValidadorUrlWebhook
+├── monitoramento/               "Como funciona" para o DESENVOLVIMENTO: mapa em resources/arquitetura/arquitetura.json + ambiente ao vivo
 ├── config/                      configurações gerais: AppConfig, OpenApiConfig (Swagger), RotaCertaProperties, VariaveisAmbienteObrigatorias
 └── exception/                   tratamento de erro global (vale para todos os módulos)
     ├── custom/                  RegraNegocio 400, CredenciaisInvalidas 401, RecursoNaoEncontrado 404, Conflito 409
@@ -168,7 +169,8 @@ Toda rota não liberada explicitamente é **negada** (deny by default: 403 com t
 | `motorista:cadastrar`, `cliente:cadastrar` | ADMINISTRATIVO | próximos módulos (o cliente é cadastrado em `/usuarios` com `usuario:gerenciar`) |
 | `ocorrencia:tratar` | SUPORTE | próximos módulos |
 | `frete:*`, `desconto:*`, `faturamento:consultar` | FINANCEIRO | próximos módulos |
-| `mensageria:monitorar`, `dispositivo:consultar-logs` | DESENVOLVIMENTO | próximos módulos |
+| `mensageria:monitorar` | DESENVOLVIMENTO | `GET /api/v1/arquitetura` ("Como funciona" no painel e no app) |
+| `dispositivo:consultar-logs` | DESENVOLVIMENTO | próximos módulos |
 
 Regras:
 
@@ -341,6 +343,7 @@ Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de c
 | GET | `/api/v1/cargas/{id}` | detalhe | `entrega:cadastrar` |
 | PATCH | `/api/v1/cargas/{id}` | altera dados/destino ou cancela (só AGUARDANDO_ROTA) | `entrega:cadastrar` |
 | POST | `/api/v1/rotas` | gera a rota otimizada — 201 + `Location` | `entrega:cadastrar` |
+| POST | `/api/v1/rotas/{id}/cargas` | inclui entregas numa rota PLANEJADA e recalcula a ordem das paradas | `entrega:cadastrar` |
 | GET | `/api/v1/rotas?status=EM_ANDAMENTO` | lista (painel: todas; app: só as do entregador) | `mapa:acompanhar` / `entrega:ver-atribuidas` |
 | GET | `/api/v1/rotas/{id}` | rota completa (paradas, trajeto, progresso, próxima parada, última posição) | `mapa:acompanhar` / `entrega:ver-atribuidas` |
 | PATCH | `/api/v1/rotas/{id}` | `EM_ANDAMENTO` (app inicia) / `CANCELADA` (Suporte, antes de sair) | `entrega:atualizar-status` / `entrega:cadastrar` |
@@ -349,6 +352,7 @@ Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de c
 | GET | `/api/v1/rotas/{id}/posicoes?desde=2026-11-04T12:00:00Z` | rastro percorrido | `mapa:acompanhar` / `entrega:ver-atribuidas` |
 | GET | `/api/v1/clientes?status=ATIVO` | empresas clientes (CNPJ, endereço de entrega) para vincular à carga | `entrega:cadastrar` ou `usuario:gerenciar` |
 | POST | `/api/v1/clientes` | cadastra a empresa (CNPJ alfanumérico, endereço) — 201 com o código de ativação | `cliente:cadastrar` (ADMINISTRATIVO, SUPORTE) |
+| GET | `/api/v1/arquitetura` | como o sistema funciona: camadas com frameworks e versões, fluxos de dados, ferramentas e o ambiente medido agora (Java, Spring Boot, Hibernate, Postgres, última migração) | `mensageria:monitorar` (DESENVOLVIMENTO) |
 | GET | `/api/v1/encomendas?status=EM_TRANSITO` | minhas encomendas (mais recentes primeiro) | `encomenda:acompanhar` (cliente) |
 | GET | `/api/v1/encomendas/{codigo}` | rastreio: rota, posição do veículo, previsão e linha do tempo | `encomenda:acompanhar` (cliente) |
 | POST | `/api/v1/webhooks` | cadastra webhook — 201 + `Location` + segredo | `webhook:gerenciar` (cliente) |
