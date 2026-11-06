@@ -18,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ABASTECIMENTO_REGISTRAR;
+import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.CLIENTE_CADASTRAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.CONSUMO_VER_METRICAS;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENCOMENDA_ACOMPANHAR;
 import static br.com.fametro.spring.transportadora.usuario.model.Permissoes.ENTREGA_ATUALIZAR_STATUS;
@@ -39,6 +40,7 @@ import static org.springframework.security.authorization.AuthorityAuthorizationM
  * GET   /api/v1/auth/sessao                                       qualquer token válido
  * /api/v1/usuarios/**                                             painel + usuario:gerenciar       (ADMINISTRATIVO)
  * GET /api/v1/entregadores, /api/v1/clientes                       painel + entrega:cadastrar ou usuario:gerenciar
+ * POST /api/v1/clientes                                            painel + cliente:cadastrar      (ADMINISTRATIVO, SUPORTE)
  * /api/v1/veiculos/{id}/metricas-consumo, /api/v1/metricas-consumo painel + consumo:ver-metricas  (FINANCEIRO)
  * /api/v1/veiculos/{id}/abastecimentos/**                         painel + abastecimento:registrar (ADM, SUPORTE, FINANCEIRO)
  * /api/v1/veiculos/**                                             painel + veiculo:gerenciar      (ADM, SUPORTE, FINANCEIRO)
@@ -80,6 +82,7 @@ public class SecurityConfig {
                         // recursos do painel (a ordem importa: o mais específico primeiro)
                         .requestMatchers(HttpMethod.GET, "/api/v1/entregadores", "/api/v1/clientes")
                                 .access(AuthorizationManagers.anyOf(painel(ENTREGA_CADASTRAR), painel(USUARIO_GERENCIAR)))
+                        .requestMatchers(HttpMethod.POST, "/api/v1/clientes").access(painel(CLIENTE_CADASTRAR))
                         .requestMatchers("/api/v1/usuarios", "/api/v1/usuarios/**").access(painel(USUARIO_GERENCIAR))
                         .requestMatchers(HttpMethod.GET, "/api/v1/metricas-consumo", "/api/v1/veiculos/*/metricas-consumo")
                                 .access(painel(CONSUMO_VER_METRICAS))

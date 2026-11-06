@@ -246,9 +246,12 @@ A tolerância (`rotacerta.frota.tolerancia-consumo-percentual`) e o fuso ficam n
 
 ## Portal do Cliente: encomendas e webhooks
 
-O **cliente** é a empresa que despacha encomendas pela transportadora. O Administrativo cria a matrícula
-(`POST /api/v1/usuarios` com `"vinculo":"CLIENTE"` e e-mail; sem departamento) → `CLI-000001`; o cliente ativa a
-senha como qualquer usuário do painel e entra em `/auth/painel/tokens`. O token só tem `encomenda:acompanhar` e
+O **cliente** é uma **empresa**. O Suporte ou o Administrativo cadastra em `POST /api/v1/clientes` (`cliente:cadastrar`):
+nome, **CNPJ** (com ou sem pontuação; já aceita o **CNPJ alfanumérico** da Receita, ex. `12.ABC.345/01DE-35`, com os
+dígitos verificadores conferidos), e-mail (login do portal), telefone e o **endereço de entrega com o ponto no mapa**
+→ `CLI-000001` + código de ativação. Na nova entrega, escolhida a empresa, o destino já vem com esse endereço.
+(O cadastro antigo, `POST /api/v1/usuarios` com `"vinculo":"CLIENTE"`, continua valendo, só que sem os dados da
+empresa.) A empresa ativa a senha como qualquer usuário do painel e entra em `/auth/painel/tokens`. O token só tem `encomenda:acompanhar` e
 `webhook:gerenciar`: nada do painel interno. O Suporte vincula a carga ao cliente com `clienteMatricula` no
 cadastro (ou no `PATCH`; `""` desvincula) e consulta os clientes em `GET /api/v1/clientes`.
 
@@ -341,7 +344,8 @@ Convenções: substantivos no plural; `POST` cria (201 + `Location`); `GET` de c
 | PATCH | `/api/v1/rotas/{id}/paradas/{ordem}` | baixa a parada | `entrega:atualizar-status` (app) |
 | POST | `/api/v1/rotas/{id}/posicoes` | lote de GPS — 201 | `posicao:sincronizar` (app) |
 | GET | `/api/v1/rotas/{id}/posicoes?desde=2026-11-04T12:00:00Z` | rastro percorrido | `mapa:acompanhar` / `entrega:ver-atribuidas` |
-| GET | `/api/v1/clientes?status=ATIVO` | clientes (matrícula, nome, e-mail) para vincular à carga | `entrega:cadastrar` ou `usuario:gerenciar` |
+| GET | `/api/v1/clientes?status=ATIVO` | empresas clientes (CNPJ, endereço de entrega) para vincular à carga | `entrega:cadastrar` ou `usuario:gerenciar` |
+| POST | `/api/v1/clientes` | cadastra a empresa (CNPJ alfanumérico, endereço) — 201 com o código de ativação | `cliente:cadastrar` (ADMINISTRATIVO, SUPORTE) |
 | GET | `/api/v1/encomendas?status=EM_TRANSITO` | minhas encomendas (mais recentes primeiro) | `encomenda:acompanhar` (cliente) |
 | GET | `/api/v1/encomendas/{codigo}` | rastreio: rota, posição do veículo, previsão e linha do tempo | `encomenda:acompanhar` (cliente) |
 | POST | `/api/v1/webhooks` | cadastra webhook — 201 + `Location` + segredo | `webhook:gerenciar` (cliente) |

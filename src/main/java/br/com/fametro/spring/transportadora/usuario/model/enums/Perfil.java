@@ -28,7 +28,7 @@ public enum Perfil {
                     VEICULO_GERENCIAR, ABASTECIMENTO_REGISTRAR)),
 
     SUPORTE(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Operação Diária & Despacho",
-            List.of(ENTREGA_CADASTRAR, MAPA_ACOMPANHAR, OCORRENCIA_TRATAR,
+            List.of(ENTREGA_CADASTRAR, MAPA_ACOMPANHAR, OCORRENCIA_TRATAR, CLIENTE_CADASTRAR,
                     VEICULO_GERENCIAR, ABASTECIMENTO_REGISTRAR)),
 
     FINANCEIRO(Vinculo.INTERNO, TipoCredencial.PAINEL_WEB, "FUN", "Financeiro & Precificação",

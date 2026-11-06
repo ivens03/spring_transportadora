@@ -20,6 +20,9 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     boolean existsByEmail(String email);
 
+    /** CNPJ da empresa cliente (coluna cnpj, dentro de {@code Usuario.empresa}). */
+    boolean existsByEmpresaCnpj(String cnpj);
+
     boolean existsByPerfil(Perfil perfil);
 
     Page<Usuario> findByPerfil(Perfil perfil, Pageable pageable);

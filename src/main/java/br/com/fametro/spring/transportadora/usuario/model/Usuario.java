@@ -4,6 +4,7 @@ import br.com.fametro.spring.transportadora.usuario.model.enums.Perfil;
 import br.com.fametro.spring.transportadora.usuario.model.enums.StatusUsuario;
 import br.com.fametro.spring.transportadora.usuario.model.enums.TipoCredencial;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -59,6 +60,10 @@ public class Usuario {
     private int falhasLogin;
     private Instant bloqueadoAte;
     private Instant ultimoLoginEm;
+
+    /** Só do cliente (empresa): CNPJ, telefone e endereço de entrega. Nulo para os outros perfis. */
+    @Embedded
+    private DadosEmpresa empresa;
 
     @Column(nullable = false, updatable = false)
     private Instant criadoEm;
@@ -130,6 +135,11 @@ public class Usuario {
         this.codigoAtivacaoExpiraEm = expiraEm;
         this.falhasLogin = 0;
         this.bloqueadoAte = null;
+        this.atualizadoEm = agora;
+    }
+
+    public void definirEmpresa(DadosEmpresa empresa, Instant agora) {
+        this.empresa = empresa;
         this.atualizadoEm = agora;
     }
 

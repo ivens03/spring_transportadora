@@ -7,6 +7,9 @@ import br.com.fametro.spring.transportadora.exception.custom.RegraNegocioExcepti
 import br.com.fametro.spring.transportadora.seguranca.service.CredencialService;
 import br.com.fametro.spring.transportadora.seguranca.service.VerificacaoCredencial;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioPatchRequest;
+import br.com.fametro.spring.transportadora.usuario.dto.request.ClienteRequest;
+import br.com.fametro.spring.transportadora.usuario.model.Cnpj;
+import br.com.fametro.spring.transportadora.usuario.model.DadosEmpresa;
 import br.com.fametro.spring.transportadora.usuario.dto.request.UsuarioRequest;
 import br.com.fametro.spring.transportadora.usuario.dto.response.CodigoAtivacaoResponse;
 import br.com.fametro.spring.transportadora.usuario.dto.response.ClienteResponse;
@@ -27,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Locale;
 
 /** Cadastro e manutenção de usuários ("Solicitação de Nova Matrícula" do fluxo de acesso). */
 @Service
@@ -59,6 +63,39 @@ public class UsuarioService {
                 passwordEncoder.encode(codigo), expiraEm, agora);
         usuarioRepository.save(usuario);
         return CodigoAtivacaoResponse.de(usuario, codigo, expiraEm);
+    }
+
+    /**
+     * Empresa cliente: cria o login do Portal do Cliente (matrícula CLI-, e-mail + senha ativada com o código
+     * devolvido) e guarda CNPJ, telefone e endereço de entrega.
+     */
+    @Transactional
+    public CodigoAtivacaoResponse criarCliente(ClienteRequest r) {
+        String cnpj = Cnpj.normalizar(r.cnpj());
+        if (!Cnpj.valido(cnpj)) {
+            throw new RegraNegocioException("CNPJ inválido: confira os dígitos verificadores.");
+        }
+        if (usuarioRepository.existsByEmpresaCnpj(cnpj)) {
+            throw new ConflitoException("Já existe empresa com o CNPJ " + Cnpj.formatar(cnpj) + ".");
+        }
+        String email = Usuario.normalizarEmail(r.email());
+        if (usuarioRepository.existsByEmail(email)) {
+            throw new ConflitoException("Já existe usuário com este e-mail.");
+        }
+
+        Instant agora = clock.instant();
+        String codigo = CodigoAtivacao.gerar();
+        Instant expiraEm = agora.plus(props.credencial().validadeCodigoAtivacao());
+        Usuario cliente = Usuario.novo(gerarMatricula(Perfil.CLIENTE), r.nome().trim(), email, Perfil.CLIENTE,
+                passwordEncoder.encode(codigo), expiraEm, agora);
+        cliente.definirEmpresa(new DadosEmpresa(cnpj, vazioNulo(r.telefone()), vazioNulo(r.cep()), r.endereco().trim(),
+                r.bairro().trim(), r.cidade().trim(), r.uf().toUpperCase(Locale.ROOT), r.latitude(), r.longitude()), agora);
+        usuarioRepository.save(cliente);
+        return CodigoAtivacaoResponse.de(cliente, codigo, expiraEm);
+    }
+
+    private static String vazioNulo(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     @Transactional(readOnly = true)
