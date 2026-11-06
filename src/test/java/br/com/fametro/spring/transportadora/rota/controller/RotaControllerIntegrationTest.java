@@ -276,4 +276,45 @@ class RotaControllerIntegrationTest extends IntegracaoTestBase {
         baixar(c.suporte(), rota, 1, """
                 {"status":"ENTREGUE"}""").andExpect(status().isForbidden()); // baixa é só pelo app
     }
+
+    private ResultActions incluir(String token, long rota, long... cargas) throws Exception {
+        StringBuilder ids = new StringBuilder();
+        for (long c : cargas) ids.append(ids.isEmpty() ? "" : ",").append(c);
+        return enviar(post(ROTAS + "/" + rota + "/cargas"), token, """
+                {"cargaIds":[%s]}""".formatted(ids));
+    }
+
+    @Test
+    void incluirEntregaNaRotaQueAindaNaoSaiu() throws Exception {
+        Cenario c = cenario();
+        Number id = JsonPath.read(gerar(c.suporte(), c.veiculo(), c.entregador().matricula(), c.longe(), c.perto())
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+        long rota = id.longValue();
+
+        // a do meio entra entre as duas: a ordem é recalculada para todas
+        incluir(c.suporte(), rota, c.meio())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PLANEJADA"))
+                .andExpect(jsonPath("$.paradas.length()").value(3))
+                .andExpect(jsonPath("$.paradas[0].cargaId").value(c.perto()))
+                .andExpect(jsonPath("$.paradas[1].cargaId").value(c.meio()))
+                .andExpect(jsonPath("$.paradas[1].ordem").value(2))
+                .andExpect(jsonPath("$.paradas[2].cargaId").value(c.longe()))
+                .andExpect(jsonPath("$.pesoTotalKg").value(300.0));
+        acessar(c.suporte(), CARGAS + "/" + c.meio()).andExpect(jsonPath("$.status").value("ROTEIRIZADA"));
+
+        // carga que já está em rota, capacidade e quem pode
+        incluir(c.suporte(), rota, c.meio()).andExpect(status().isUnprocessableEntity());
+        long pesada = cadastrarCarga(c.suporte(), carga("Meireles", LAT, "-38.506700", "400"));
+        incluir(c.suporte(), rota, pesada).andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.mensagem").value(org.hamcrest.Matchers.containsString("capacidade")));
+        incluir(c.entregador().token(), rota, pesada).andExpect(status().isForbidden());
+        incluir(c.suporte(), 999_999, pesada).andExpect(status().isNotFound());
+
+        // depois que saiu, não entra mais nada
+        statusRota(c.entregador().token(), rota, "EM_ANDAMENTO").andExpect(status().isOk());
+        long leve = cadastrarCarga(c.suporte(), carga("Benfica", LAT, "-38.526700", "5"));
+        incluir(c.suporte(), rota, leve).andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.mensagem").value(org.hamcrest.Matchers.containsString("antes de ela sair")));
+    }
 }

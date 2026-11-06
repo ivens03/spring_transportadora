@@ -122,6 +122,23 @@ public class Rota {
         paradas.add(ParadaRota.nova(this, carga, ordem, distanciaDoAnteriorKm));
     }
 
+    /** Antes de recalcular a ordem: tira todas as paradas (a rota precisa estar PLANEJADA). */
+    public void limparParadas() {
+        exigir(StatusRota.PLANEJADA, "mudar as paradas de");
+        paradas.clear();
+    }
+
+    /** Novas estimativas depois de incluir entregas numa rota que ainda não saiu. */
+    public void replanejar(BigDecimal distanciaEstimadaKm, int duracaoEstimadaMin, BigDecimal pesoTotalKg,
+                           BigDecimal volumeTotalM3, Instant agora) {
+        exigir(StatusRota.PLANEJADA, "replanejar");
+        this.distanciaEstimadaKm = distanciaEstimadaKm;
+        this.duracaoEstimadaMin = duracaoEstimadaMin;
+        this.pesoTotalKg = pesoTotalKg;
+        this.volumeTotalM3 = volumeTotalM3;
+        this.atualizadaEm = agora;
+    }
+
     public boolean pertenceA(String matricula) {
         return entregador.getMatricula().equals(matricula);
     }

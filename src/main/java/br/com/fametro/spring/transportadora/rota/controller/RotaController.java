@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import br.com.fametro.spring.transportadora.rota.dto.request.IncluirCargasRequest;
 import br.com.fametro.spring.transportadora.rota.dto.request.ParadaPatchRequest;
 import br.com.fametro.spring.transportadora.rota.dto.request.RotaPatchRequest;
 import br.com.fametro.spring.transportadora.rota.dto.request.RotaRequest;
@@ -45,6 +46,7 @@ import java.net.URI;
  * POST  /api/v1/rotas                          gera a rota otimizada (painel, entrega:cadastrar)          201
  * GET   /api/v1/rotas?status=                  lista (painel vê todas; entregador só as dele)
  * GET   /api/v1/rotas/{id}                     rota completa: paradas, trajeto, progresso, próxima parada
+ * POST  /api/v1/rotas/{id}/cargas              inclui entregas numa rota PLANEJADA (painel)               200
  * PATCH /api/v1/rotas/{id}                     {"status":"EM_ANDAMENTO"} entregador inicia | {"status":"CANCELADA"} suporte
  * PATCH /api/v1/rotas/{id}/paradas/{ordem}     entregador baixa a parada (ENTREGUE / NAO_ENTREGUE)
  * </pre>
@@ -76,6 +78,23 @@ public class RotaController {
         RotaResponse criada = rotaService.gerar(request, jwt.getSubject());
         URI local = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(criada.id()).toUri();
         return ResponseEntity.created(local).body(criada);
+    }
+
+    @Operation(summary = "Incluir entregas numa rota que ainda não saiu (painel — SUPORTE)",
+            description = """
+                    Para quando o entregador escolhido já tem rota PLANEJADA: as cargas (AGUARDANDO_ROTA) entram
+                    nela, a capacidade é conferida com tudo junto e a ordem de todas as paradas é recalculada.
+                    Rota EM_ANDAMENTO não recebe mais entregas.""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Rota com as paradas na nova ordem"),
+            @ApiResponse(responseCode = "400", description = "Lista vazia ou id nulo", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Rota ou carga não encontrada", content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "422", description = "Rota já saiu, carga indisponível ou capacidade excedida", content = @Content(schema = @Schema(implementation = ErroResponse.class)))
+    })
+    @PostMapping("/{id}/cargas")
+    public ResponseEntity<RotaResponse> incluirCargas(@Parameter(example = "1") @PathVariable Long id,
+                                                      @Valid @RequestBody IncluirCargasRequest request) {
+        return ResponseEntity.ok(rotaService.incluirCargas(id, request));
     }
 
     @Operation(summary = "Listar rotas (paginado)",

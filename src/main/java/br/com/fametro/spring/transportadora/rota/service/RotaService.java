@@ -6,6 +6,7 @@ import br.com.fametro.spring.transportadora.exception.custom.ConflitoException;
 import br.com.fametro.spring.transportadora.exception.custom.RecursoNaoEncontradoException;
 import br.com.fametro.spring.transportadora.exception.custom.RegraNegocioException;
 import br.com.fametro.spring.transportadora.rota.config.RotaProperties;
+import br.com.fametro.spring.transportadora.rota.dto.request.IncluirCargasRequest;
 import br.com.fametro.spring.transportadora.rota.dto.request.ParadaPatchRequest;
 import br.com.fametro.spring.transportadora.rota.dto.request.RotaPatchRequest;
 import br.com.fametro.spring.transportadora.rota.dto.request.RotaRequest;
@@ -36,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -97,6 +99,69 @@ public class RotaService {
             throw new ConflitoException("Entregador " + matricula + " já está numa rota PLANEJADA ou EM_ANDAMENTO.");
         }
 
+        List<Carga> cargas = disponiveis(ids);
+        BigDecimal peso = somaPeso(cargas);
+        BigDecimal volume = somaVolume(cargas);
+        conferirCapacidade(veiculo, peso, volume);
+
+        // ordem otimizada das paradas
+        BigDecimal origemLat = req.origemLatitude() != null ? req.origemLatitude() : BigDecimal.valueOf(props.origem().latitude());
+        BigDecimal origemLng = req.origemLongitude() != null ? req.origemLongitude() : BigDecimal.valueOf(props.origem().longitude());
+        boolean retornar = req.retornarAOrigem() == null || req.retornarAOrigem();
+        Estimativa est = estimar(origemLat, origemLng, retornar, cargas);
+
+        Instant agora = clock.instant();
+        Rota rota = Rota.nova("ROT-%06d".formatted(rotaRepository.proximoNumeroCodigo()), veiculo, entregador,
+                origemLat, origemLng, retornar, est.km(), est.minutos(), peso, volume, solicitante, agora);
+        montarParadas(rota, cargas, est);
+        cargas.forEach(c -> c.roteirizar(agora));
+        Rota salva = rotaRepository.save(rota); // salva antes de avisar: o rastreio do aviso já enxerga a rota nova
+        salva.getParadas().forEach(p -> avisar(p.getCarga(), TipoEventoEncomenda.ROTEIRIZADA, salva, null, agora));
+        return rotaMapper.completa(salva);
+    }
+
+    /**
+     * Inclui cargas numa rota que ainda não saiu (PLANEJADA): o entregador já escalado leva mais estas entregas.
+     * Confere capacidade com tudo junto e recalcula a ordem de <b>todas</b> as paradas (a nova pode cair no meio).
+     */
+    @Transactional
+    public RotaResponse incluirCargas(Long id, IncluirCargasRequest req) {
+        Set<Long> ids = new LinkedHashSet<>(req.cargaIds());
+        if (ids.size() != req.cargaIds().size()) {
+            throw new RegraNegocioException("A mesma carga foi enviada mais de uma vez.");
+        }
+        Rota rota = rotaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Rota " + id + " não encontrada."));
+        if (rota.getStatus() != StatusRota.PLANEJADA) {
+            throw new RegraNegocioException("A rota " + rota.getCodigo() + " está " + rota.getStatus()
+                    + ": só dá para incluir entregas antes de ela sair (PLANEJADA).");
+        }
+        List<Carga> novas = disponiveis(ids);
+        List<Carga> todas = new ArrayList<>(rota.getParadas().stream().map(ParadaRota::getCarga).toList());
+        todas.addAll(novas);
+        if (todas.size() > props.maxParadas()) {
+            throw new RegraNegocioException("Máximo de " + props.maxParadas() + " cargas por rota.");
+        }
+        BigDecimal peso = somaPeso(todas);
+        BigDecimal volume = somaVolume(todas);
+        conferirCapacidade(rota.getVeiculo(), peso, volume);
+
+        Estimativa est = estimar(rota.getOrigemLatitude(), rota.getOrigemLongitude(), rota.isRetornaOrigem(), todas);
+        Instant agora = clock.instant();
+        rota.limparParadas();
+        // apaga as paradas antigas no banco antes de inserir as novas: (rota, ordem) e (rota, carga) são únicos
+        // e o Hibernate faria os INSERTs antes dos DELETEs
+        rotaRepository.flush();
+        montarParadas(rota, todas, est);
+        rota.replanejar(est.km(), est.minutos(), peso, volume, agora);
+        novas.forEach(c -> c.roteirizar(agora));
+        Rota salva = rotaRepository.saveAndFlush(rota);
+        novas.forEach(c -> avisar(c, TipoEventoEncomenda.ROTEIRIZADA, salva, null, agora));
+        return rotaMapper.completa(salva);
+    }
+
+    /** Cargas existentes e AGUARDANDO_ROTA, travadas para ninguém roteirizar a mesma ao mesmo tempo. */
+    private List<Carga> disponiveis(Set<Long> ids) {
         List<Carga> cargas = cargaRepository.travarPorIds(ids);
         if (cargas.size() != ids.size()) {
             Set<Long> faltando = new HashSet<>(ids);
@@ -108,9 +173,18 @@ public class RotaService {
         if (!indisponiveis.isEmpty()) {
             throw new RegraNegocioException("Cargas fora de AGUARDANDO_ROTA: " + String.join(", ", indisponiveis) + ".");
         }
+        return cargas;
+    }
 
-        BigDecimal peso = cargas.stream().map(Carga::getPesoKg).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal volume = cargas.stream().map(Carga::getVolumeM3).reduce(BigDecimal.ZERO, BigDecimal::add);
+    private static BigDecimal somaPeso(List<Carga> cargas) {
+        return cargas.stream().map(Carga::getPesoKg).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static BigDecimal somaVolume(List<Carga> cargas) {
+        return cargas.stream().map(Carga::getVolumeM3).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static void conferirCapacidade(Veiculo veiculo, BigDecimal peso, BigDecimal volume) {
         if (peso.compareTo(veiculo.getCapacidadeCargaKg()) > 0) {
             throw new RegraNegocioException("Peso total " + peso + " kg passa da capacidade do veículo "
                     + veiculo.getPlaca() + " (" + veiculo.getCapacidadeCargaKg() + " kg).");
@@ -119,28 +193,25 @@ public class RotaService {
             throw new RegraNegocioException("Volume total " + volume + " m³ passa da capacidade do veículo "
                     + veiculo.getPlaca() + " (" + veiculo.getCapacidadeVolumeM3() + " m³).");
         }
+    }
 
-        // ordem otimizada das paradas
-        BigDecimal origemLat = req.origemLatitude() != null ? req.origemLatitude() : BigDecimal.valueOf(props.origem().latitude());
-        BigDecimal origemLng = req.origemLongitude() != null ? req.origemLongitude() : BigDecimal.valueOf(props.origem().longitude());
-        boolean retornar = req.retornarAOrigem() == null || req.retornarAOrigem();
+    /** Ordem otimizada e estimativas (km por ruas e minutos, contando o tempo em cada parada). */
+    private Estimativa estimar(BigDecimal origemLat, BigDecimal origemLng, boolean retornar, List<Carga> cargas) {
         List<Ponto> destinos = cargas.stream().map(c -> RotaMapper.ponto(c.getLatitude(), c.getLongitude())).toList();
         OtimizadorRota.Plano plano = OtimizadorRota.otimizar(RotaMapper.ponto(origemLat, origemLng), destinos, retornar);
-
         double kmRuas = plano.totalKm() * props.fatorDistanciaViaria();
         int minutos = (int) Math.ceil(kmRuas / props.velocidadeMediaKmH() * 60) + cargas.size() * props.minutosPorParada();
+        return new Estimativa(plano, RotaMapper.km(kmRuas), minutos);
+    }
 
-        Instant agora = clock.instant();
-        Rota rota = Rota.nova("ROT-%06d".formatted(rotaRepository.proximoNumeroCodigo()), veiculo, entregador,
-                origemLat, origemLng, retornar, RotaMapper.km(kmRuas), minutos, peso, volume, solicitante, agora);
-        for (int i = 0; i < plano.ordem().size(); i++) {
-            Carga carga = cargas.get(plano.ordem().get(i));
-            rota.adicionarParada(carga, i + 1, RotaMapper.km(plano.distanciasKm().get(i) * props.fatorDistanciaViaria()));
-            carga.roteirizar(agora);
+    private void montarParadas(Rota rota, List<Carga> cargas, Estimativa est) {
+        for (int i = 0; i < est.plano().ordem().size(); i++) {
+            Carga carga = cargas.get(est.plano().ordem().get(i));
+            rota.adicionarParada(carga, i + 1, RotaMapper.km(est.plano().distanciasKm().get(i) * props.fatorDistanciaViaria()));
         }
-        Rota salva = rotaRepository.save(rota); // salva antes de avisar: o rastreio do aviso já enxerga a rota nova
-        salva.getParadas().forEach(p -> avisar(p.getCarga(), TipoEventoEncomenda.ROTEIRIZADA, salva, null, agora));
-        return rotaMapper.completa(salva);
+    }
+
+    private record Estimativa(OtimizadorRota.Plano plano, BigDecimal km, int minutos) {
     }
 
     @Transactional(readOnly = true)

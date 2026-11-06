@@ -91,7 +91,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/veiculos", "/api/v1/veiculos/**").access(painel(VEICULO_GERENCIAR))
                         .requestMatchers("/api/v1/cargas", "/api/v1/cargas/**").access(painel(ENTREGA_CADASTRAR))
                         // rotas: o mesmo recurso atende o painel (Suporte) e o app (entregador)
-                        .requestMatchers(HttpMethod.POST, "/api/v1/rotas").access(painel(ENTREGA_CADASTRAR))
+                        .requestMatchers(HttpMethod.POST, "/api/v1/rotas", "/api/v1/rotas/*/cargas").access(painel(ENTREGA_CADASTRAR))
                         .requestMatchers(HttpMethod.GET, "/api/v1/rotas", "/api/v1/rotas/*", "/api/v1/rotas/*/posicoes")
                                 .access(AuthorizationManagers.anyOf(painel(MAPA_ACOMPANHAR), app(ENTREGA_VER_ATRIBUIDAS)))
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/rotas/*")

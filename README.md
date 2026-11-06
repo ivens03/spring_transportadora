@@ -158,7 +158,7 @@ Toda rota não liberada explicitamente é **negada** (deny by default: 403 com t
 | `veiculo:gerenciar` | ADMINISTRATIVO, SUPORTE, FINANCEIRO | `/api/v1/veiculos` (cadastro e manutenção da frota) |
 | `abastecimento:registrar` | ADMINISTRATIVO, SUPORTE, FINANCEIRO | `/api/v1/veiculos/{id}/abastecimentos/**` |
 | `consumo:ver-metricas` | FINANCEIRO | `/api/v1/metricas-consumo` e `/api/v1/veiculos/{id}/metricas-consumo` |
-| `entrega:cadastrar` | SUPORTE | `/api/v1/cargas/**`, gerar (`POST`) e cancelar (`PATCH`) rotas |
+| `entrega:cadastrar` | SUPORTE | `/api/v1/cargas/**`, gerar (`POST`), incluir entregas (`POST …/{id}/cargas`) e cancelar (`PATCH`) rotas |
 | `mapa:acompanhar` | SUPORTE | ver rotas e o rastro de GPS (`GET /api/v1/rotas/**`) |
 | `entrega:ver-atribuidas` | ENTREGADOR | ver as **próprias** rotas (`GET /api/v1/rotas/**`; as dos outros dão 404) |
 | `entrega:atualizar-status` | ENTREGADOR | iniciar a rota e baixar paradas (`PATCH`) |
@@ -232,6 +232,9 @@ A tolerância (`rotacerta.frota.tolerancia-consumo-percentual`) e o fuso ficam n
    depósito (`rotacerta.rota.origem`) ou da origem informada, voltando ou não (`retornarAOrigem`, padrão sim).
    Distância = linha reta (Haversine) × fator viário 1,3; duração = distância / 25 km/h + 5 min por parada.
    É estimativa: o desenho das ruas fica com o provedor de mapas do front.
+   **Entrega nova para um entregador que já tem rota PLANEJADA** (ainda não saiu): `POST /api/v1/rotas/{id}/cargas`
+   `{"cargaIds":[5]}` inclui a carga nessa rota, confere a capacidade com tudo junto e recalcula a ordem de todas as
+   paradas. Depois que a rota sai (EM_ANDAMENTO) não entra mais nada (422).
 4. **O entregador inicia no app**: `PATCH /api/v1/rotas/{id}` `{"status":"EM_ANDAMENTO"}`. A resposta já é a tela:
    paradas em ordem, `trajeto` (origem → paradas → retorno), `proximaParada`, distância e minutos até ela.
 5. **Durante a rota** o app envia o GPS em lote (`POST …/posicoes`, até 500 leituras; reenvio não duplica) e baixa
